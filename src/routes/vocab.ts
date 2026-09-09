@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import { db } from '../db/client.js';
-import { vocabWords, userVocabProgress } from '../db/schema.js';
+import { vocabWords, userVocabProgress, users } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { authenticateToken, AuthRequest, extractOptionalUserId } from '../middleware/auth.js';
 import crypto from 'crypto';
 
 const router = Router();
 
-// Get words by group number (with optional user progress)
+// Get words by group number (with optional user progress & subscription checks)
 router.get('/groups/:groupNumber/words', async (req: AuthRequest, res) => {
   const groupNumberStr = req.params.groupNumber as string;
   const parsedGroup = parseInt(groupNumberStr, 10);
@@ -19,6 +19,40 @@ router.get('/groups/:groupNumber/words', async (req: AuthRequest, res) => {
   const { language } = req.query;
   const targetLanguage = (language as string) || 'english';
   const userId = extractOptionalUserId(req);
+
+  // Check subscription access
+  const isEnglish = targetLanguage.toLowerCase() === 'english';
+  const isModule1 = parsedGroup === 1;
+
+  // Foreign languages OR English Module 2+ require active subscription
+  if (!isEnglish || !isModule1) {
+    if (!userId) {
+      res.status(403).json({
+        message: !isEnglish
+          ? 'Access locked. Foreign languages require an active VocabHub plan.'
+          : 'Access locked. English Module 2+ requires an active VocabHub plan.',
+      });
+      return;
+    }
+
+    const userList = await db.select().from(users).where(eq(users.id, userId));
+    const user = userList[0];
+    const isSubscribed =
+      user &&
+      user.vocabPlanType !== 'none' &&
+      user.vocabExpiresAt &&
+      new Date(user.vocabExpiresAt).getTime() > Date.now();
+
+    if (!isSubscribed) {
+      res.status(403).json({
+        message: !isEnglish
+          ? 'Access locked. Foreign languages require an active VocabHub plan (₹499/mo or ₹2944/yr).'
+          : 'Access locked. English Module 2+ requires an active VocabHub plan (₹499/mo or ₹2944/yr).',
+      });
+      return;
+    }
+  }
+
 
   try {
     let words;

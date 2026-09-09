@@ -14,6 +14,22 @@ export const users = pgTable('users', {
   gender: varchar('gender', { length: 50 }),
   lastUsernameChangedAt: text('last_username_changed_at'),
   profileCompleted: integer('profile_completed').default(0).notNull(),
+  vocabPlanType: varchar('vocab_plan_type', { length: 50 }).default('none').notNull(), // 'none' | 'monthly' | 'yearly'
+  vocabExpiresAt: text('vocab_expires_at'),
+  practiceAccess: integer('practice_access').default(0).notNull(), // 0 = locked, 1 = unlocked
+  autoRenew: integer('auto_renew').default(1).notNull(), // 1 = active auto renew
+});
+
+export const payments = pgTable('payments', {
+  id: varchar('id', { length: 256 }).primaryKey(),
+  userId: varchar('user_id', { length: 256 }).references(() => users.id).notNull(),
+  razorpayOrderId: varchar('razorpay_order_id', { length: 256 }),
+  razorpayPaymentId: varchar('razorpay_payment_id', { length: 256 }),
+  razorpaySignature: text('razorpay_signature'),
+  planType: varchar('plan_type', { length: 100 }).notNull(), // 'vocab_monthly' | 'vocab_yearly' | 'practice_pass'
+  amount: integer('amount').notNull(), // in INR
+  status: varchar('status', { length: 50 }).default('completed').notNull(),
+  createdAt: text('created_at').notNull(),
 });
 
 export const vocabWords = pgTable('vocab_words', {
@@ -85,3 +101,4 @@ export const quizAttempts = pgTable('quiz_attempts', {
   section: varchar('section', { length: 100 }).notNull(), // 'quant' | 'verbal'
   attemptedAt: text('attempted_at').notNull(),
 });
+

@@ -197,7 +197,7 @@ router.get('/questions/infinite', async (req, res) => {
     const openTdbRes = await fetch(
       `https://opentdb.com/api.php?amount=${Math.min(count, 10)}&category=${selectedCat}&type=multiple`
     );
-    const apiData = await openTdbRes.json();
+    const apiData = (await openTdbRes.json()) as any;
 
     const resultQuestions: any[] = [];
 
@@ -247,7 +247,8 @@ router.get('/questions/live', async (req, res) => {
     const apiRes = await fetch(
       `https://opentdb.com/api.php?amount=${amount}&category=${category}&type=multiple`
     );
-    const data = await apiRes.json();
+    const data = (await apiRes.json()) as any;
+
 
     if (data.response_code === 0 && data.results && data.results.length > 0) {
       const formatted = data.results.map((item: any, idx: number) => {

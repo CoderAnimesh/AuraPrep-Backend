@@ -5,6 +5,7 @@ import authRoutes from './routes/auth.js';
 import studyPlansRoutes from './routes/studyPlans.js';
 import vocabRoutes from './routes/vocab.js';
 import practiceRoutes from './routes/practice.js';
+import paymentRoutes from './routes/payments.js';
 
 dotenv.config();
 
@@ -43,6 +44,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/study-plans', studyPlansRoutes);
 app.use('/api/vocab', vocabRoutes);
 app.use('/api/practice', practiceRoutes);
+app.use('/api/payments', paymentRoutes);
+
 
 // Health check (supports both /health and /api/health for keep-alive services like UptimeRobot, Render, etc.)
 const healthHandler = (_req: express.Request, res: express.Response) => {

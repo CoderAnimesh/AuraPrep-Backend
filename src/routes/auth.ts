@@ -9,20 +9,47 @@ import crypto from 'crypto';
 
 const router = Router();
 
+// Helper to format consistent user payload including subscription info
+function formatUserResponse(user: any, streak: number = 1, prepLevel: string = 'Bronze') {
+  let vocabPlanType = user.vocabPlanType || 'none';
+  const vocabExpiresAt = user.vocabExpiresAt || null;
+
+  // Auto-expire subscription if past expiry date
+  if (vocabExpiresAt && new Date(vocabExpiresAt).getTime() < Date.now()) {
+    vocabPlanType = 'none';
+  }
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    username: user.username || null,
+    country: user.country || null,
+    gender: user.gender || null,
+    themePreference: user.themePreference || 'dark',
+    profileCompleted: user.profileCompleted || 0,
+    loginStreak: streak,
+    preparationLevel: prepLevel,
+    vocabPlanType,
+    vocabExpiresAt,
+    practiceAccess: user.practiceAccess || 0,
+    autoRenew: user.autoRenew || 1,
+  };
+}
 
 // Helper to calculate prep level
 async function getPreparationLevel(userId: string) {
   try {
     const vocabProgress = await db.select().from(userVocabProgress).where(eq(userVocabProgress.userId, userId));
-    const masteredCount = vocabProgress.filter(p => p.status === 'mastered').length;
-    const learningCount = vocabProgress.filter(p => p.status === 'learning').length;
-    const vocabPoints = (masteredCount * 50) + (learningCount * 10);
-    
+    const masteredCount = vocabProgress.filter((p) => p.status === 'mastered').length;
+    const learningCount = vocabProgress.filter((p) => p.status === 'learning').length;
+    const vocabPoints = masteredCount * 50 + learningCount * 10;
+
     const attempts = await db.select().from(quizAttempts).where(eq(quizAttempts.userId, userId));
     const quizPoints = attempts.reduce((sum, a) => sum + Math.round((a.score / a.totalQuestions) * 100), 0);
-    
+
     const totalPoints = vocabPoints + quizPoints;
-    
+
     if (totalPoints >= 1500) {
       return 'GRE Legend';
     } else if (totalPoints >= 1000) {
@@ -45,25 +72,26 @@ async function checkAndUpdateStreak(user: any) {
   try {
     const today = new Date().toISOString().split('T')[0];
     const lastLogin = user.lastLoginDate;
-    
+
     if (lastLogin === today) {
-      return user.loginStreak;
+      return user.loginStreak || 1;
     }
-    
+
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     let newStreak = 1;
-    
+
     if (lastLogin === yesterday) {
-      newStreak = user.loginStreak + 1;
+      newStreak = (user.loginStreak || 0) + 1;
     }
-    
-    await db.update(users)
+
+    await db
+      .update(users)
       .set({
         loginStreak: newStreak,
-        lastLoginDate: today
+        lastLoginDate: today,
       })
       .where(eq(users.id, user.id));
-      
+
     return newStreak;
   } catch (err) {
     console.error('Error checking and updating login streak:', err);
@@ -100,24 +128,19 @@ router.post('/register', async (req, res) => {
       name,
       password: passwordHash,
       themePreference: 'dark',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      vocabPlanType: 'none',
+      practiceAccess: 0,
+      autoRenew: 1,
     });
+
+    const newUserList = await db.select().from(users).where(eq(users.id, userId));
+    const newUser = newUserList[0];
 
     const token = jwt.sign({ userId }, getJwtSecret(), { expiresIn: '7d' });
     res.status(201).json({
       token,
-      user: { 
-        id: userId, 
-        email, 
-        name, 
-        themePreference: 'dark',
-        loginStreak: 1,
-        preparationLevel: 'Bronze',
-        username: null,
-        country: null,
-        gender: null,
-        profileCompleted: 0
-      }
+      user: formatUserResponse(newUser, 1, 'Bronze'),
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -152,18 +175,7 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '7d' });
     res.json({
       token,
-      user: { 
-        id: user.id, 
-        email: user.email, 
-        name: user.name, 
-        username: user.username,
-        country: user.country,
-        gender: user.gender,
-        themePreference: user.themePreference,
-        profileCompleted: user.profileCompleted,
-        loginStreak: currentStreak,
-        preparationLevel: prepLevel
-      }
+      user: formatUserResponse(user, currentStreak, prepLevel),
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -182,18 +194,7 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
     }
     const currentStreak = await checkAndUpdateStreak(user);
     const prepLevel = await getPreparationLevel(user.id);
-    res.json({
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      username: user.username,
-      country: user.country,
-      gender: user.gender,
-      themePreference: user.themePreference,
-      profileCompleted: user.profileCompleted,
-      loginStreak: currentStreak,
-      preparationLevel: prepLevel
-    });
+    res.json(formatUserResponse(user, currentStreak, prepLevel));
   } catch (error) {
     console.error('Fetch me error:', error);
     res.status(500).json({ message: 'Internal server error.' });
@@ -209,9 +210,7 @@ router.put('/theme', authenticateToken, async (req: AuthRequest, res) => {
   }
 
   try {
-    await db.update(users)
-      .set({ themePreference: theme })
-      .where(eq(users.id, req.userId!));
+    await db.update(users).set({ themePreference: theme }).where(eq(users.id, req.userId!));
 
     res.json({ message: 'Theme updated successfully.', theme });
   } catch (error) {
@@ -235,14 +234,17 @@ router.post('/social-login', async (req, res) => {
     if (!user) {
       const userId = crypto.randomUUID();
       const dummyPassword = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
-      
+
       await db.insert(users).values({
         id: userId,
         email,
         name: name || email.split('@')[0],
         password: dummyPassword,
         themePreference: 'dark',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        vocabPlanType: 'none',
+        practiceAccess: 0,
+        autoRenew: 1,
       });
 
       const updatedList = await db.select().from(users).where(eq(users.id, userId));
@@ -252,26 +254,17 @@ router.post('/social-login', async (req, res) => {
     const currentStreak = await checkAndUpdateStreak(user);
     const prepLevel = await getPreparationLevel(user.id);
     const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '7d' });
+
     res.json({
       token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        username: user.username,
-        country: user.country,
-        gender: user.gender,
-        themePreference: user.themePreference,
-        profileCompleted: user.profileCompleted,
-        loginStreak: currentStreak,
-        preparationLevel: prepLevel
-      }
+      user: formatUserResponse(user, currentStreak, prepLevel),
     });
   } catch (error) {
     console.error('Social login error:', error);
     res.status(500).json({ message: 'Internal server error.' });
   }
 });
+
 // Get Leaderboard
 router.get('/leaderboard', authenticateToken, async (req: AuthRequest, res) => {
   try {
@@ -301,7 +294,7 @@ router.get('/leaderboard', authenticateToken, async (req: AuthRequest, res) => {
       const vocabProgress = progressByUser.get(u.id) || [];
       const masteredCount = vocabProgress.filter((p: any) => p.status === 'mastered').length;
       const learningCount = vocabProgress.filter((p: any) => p.status === 'learning').length;
-      const vocabPoints = (masteredCount * 50) + (learningCount * 10);
+      const vocabPoints = masteredCount * 50 + learningCount * 10;
 
       const attempts = attemptsByUser.get(u.id) || [];
       const quizPoints = attempts.reduce((sum: number, a: any) => sum + Math.round((a.score / a.totalQuestions) * 100), 0);
@@ -327,13 +320,11 @@ router.get('/leaderboard', authenticateToken, async (req: AuthRequest, res) => {
         username: u.username,
         points: totalPoints,
         level: gameLevel,
-        loginStreak: u.loginStreak
+        loginStreak: u.loginStreak,
       });
     }
 
-    // Sort descending by points
     leaderboard.sort((a, b) => b.points - a.points);
-
     res.json(leaderboard);
   } catch (error) {
     console.error('Fetch leaderboard error:', error);
@@ -351,7 +342,6 @@ router.post('/setup-profile', authenticateToken, async (req: AuthRequest, res) =
     return;
   }
 
-  // Regex: only alphabets, underscores (_), and periods (.)
   const usernameRegex = /^[a-zA-Z._]+$/;
   if (!usernameRegex.test(username)) {
     res.status(400).json({ message: 'Username can only contain alphabets, underscores (_), and periods (.).' });
@@ -359,19 +349,19 @@ router.post('/setup-profile', authenticateToken, async (req: AuthRequest, res) =
   }
 
   try {
-    // Check uniqueness
     const existing = await db.select().from(users).where(eq(users.username, username.toLowerCase().trim()));
     if (existing.length > 0 && existing[0].id !== userId) {
       res.status(400).json({ message: 'Username is already taken.' });
       return;
     }
 
-    await db.update(users)
+    await db
+      .update(users)
       .set({
         username: username.toLowerCase().trim(),
         country,
         gender,
-        profileCompleted: 1
+        profileCompleted: 1,
       })
       .where(eq(users.id, userId));
 
@@ -381,19 +371,8 @@ router.post('/setup-profile', authenticateToken, async (req: AuthRequest, res) =
     const prepLevel = await getPreparationLevel(user.id);
 
     res.json({
-      message: 'Profile completed successfully.',
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        username: user.username,
-        country: user.country,
-        gender: user.gender,
-        themePreference: user.themePreference,
-        profileCompleted: user.profileCompleted,
-        loginStreak: currentStreak,
-        preparationLevel: prepLevel
-      }
+      message: 'Profile setup completed.',
+      user: formatUserResponse(user, currentStreak, prepLevel),
     });
   } catch (error) {
     console.error('Setup profile error:', error);
@@ -401,7 +380,7 @@ router.post('/setup-profile', authenticateToken, async (req: AuthRequest, res) =
   }
 });
 
-// Update username (once a month limit)
+// Update username
 router.put('/update-username', authenticateToken, async (req: AuthRequest, res) => {
   const { username } = req.body;
   const userId = req.userId!;
@@ -425,10 +404,9 @@ router.put('/update-username', authenticateToken, async (req: AuthRequest, res) 
       return;
     }
 
-    // Check if they changed username in the last 30 days
     if (user.lastUsernameChangedAt) {
       const lastChanged = new Date(user.lastUsernameChangedAt);
-      const nextAllowed = new Date(lastChanged.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days
+      const nextAllowed = new Date(lastChanged.getTime() + 30 * 24 * 60 * 60 * 1000);
       if (new Date() < nextAllowed) {
         const daysLeft = Math.ceil((nextAllowed.getTime() - new Date().getTime()) / (24 * 60 * 60 * 1000));
         res.status(400).json({ message: `Username can only be changed once a month. Try again in ${daysLeft} day(s).` });
@@ -436,17 +414,17 @@ router.put('/update-username', authenticateToken, async (req: AuthRequest, res) 
       }
     }
 
-    // Check uniqueness
     const existing = await db.select().from(users).where(eq(users.username, username.toLowerCase().trim()));
     if (existing.length > 0 && existing[0].id !== userId) {
       res.status(400).json({ message: 'Username is already taken.' });
       return;
     }
 
-    await db.update(users)
+    await db
+      .update(users)
       .set({
         username: username.toLowerCase().trim(),
-        lastUsernameChangedAt: new Date().toISOString()
+        lastUsernameChangedAt: new Date().toISOString(),
       })
       .where(eq(users.id, userId));
 
@@ -457,18 +435,7 @@ router.put('/update-username', authenticateToken, async (req: AuthRequest, res) 
 
     res.json({
       message: 'Username updated successfully.',
-      user: {
-        id: updatedUser.id,
-        email: updatedUser.email,
-        name: updatedUser.name,
-        username: updatedUser.username,
-        country: updatedUser.country,
-        gender: updatedUser.gender,
-        themePreference: updatedUser.themePreference,
-        profileCompleted: updatedUser.profileCompleted,
-        loginStreak: currentStreak,
-        preparationLevel: prepLevel
-      }
+      user: formatUserResponse(updatedUser, currentStreak, prepLevel),
     });
   } catch (error) {
     console.error('Update username error:', error);
@@ -487,7 +454,8 @@ router.put('/update-profile', authenticateToken, async (req: AuthRequest, res) =
   }
 
   try {
-    await db.update(users)
+    await db
+      .update(users)
       .set({ country, gender })
       .where(eq(users.id, userId));
 
@@ -498,18 +466,7 @@ router.put('/update-profile', authenticateToken, async (req: AuthRequest, res) =
 
     res.json({
       message: 'Profile updated successfully.',
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        username: user.username,
-        country: user.country,
-        gender: user.gender,
-        themePreference: user.themePreference,
-        profileCompleted: user.profileCompleted,
-        loginStreak: currentStreak,
-        preparationLevel: prepLevel
-      }
+      user: formatUserResponse(user, currentStreak, prepLevel),
     });
   } catch (error) {
     console.error('Update profile error:', error);
