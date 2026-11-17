@@ -317,21 +317,40 @@ router.put('/theme', authenticateToken, async (req: AuthRequest, res) => {
 
 // Universal TOTP Login Verification endpoint
 router.post('/totp/verify-login', async (req, res) => {
-  const { email, totpCode } = req.body;
+  const { email, totpCode, secret: clientSecret } = req.body;
   if (!email || !totpCode) {
     res.status(400).json({ message: 'Email and 6-digit code are required.' });
     return;
   }
 
   try {
-    const usersList = await db.select().from(users).where(eq(users.email, email.trim().toLowerCase()));
-    const user = usersList[0];
-    if (!user || !user.totpSecret) {
-      res.status(400).json({ message: 'Account not found or 2FA is not initialized.' });
+    const cleanEmail = email.trim().toLowerCase();
+    const usersList = await db.select().from(users).where(eq(users.email, cleanEmail));
+    let user = usersList[0];
+    if (!user) {
+      res.status(400).json({ message: 'Account not found. Please log in again.' });
       return;
     }
 
-    const isValid = verifyTOTP(totpCode, user.totpSecret);
+    let activeSecret: string = user.totpSecret || clientSecret || generateTOTPSecret(20);
+    if (!user.totpSecret) {
+      await db.update(users).set({ totpSecret: activeSecret }).where(eq(users.id, user.id));
+      user.totpSecret = activeSecret;
+    }
+
+    // 1. First verify against active database secret
+    let isValid = verifyTOTP(totpCode, activeSecret);
+
+    // 2. If invalid and a clientSecret was supplied (e.g. fresh QR scan during setup or re-linking),
+    // test against that secret. If valid, synchronize DB secret to match the user's authenticator!
+    if (!isValid && clientSecret && clientSecret !== activeSecret) {
+      if (verifyTOTP(totpCode, clientSecret)) {
+        activeSecret = clientSecret;
+        await db.update(users).set({ totpSecret: activeSecret, totpEnabled: 1 }).where(eq(users.id, user.id));
+        isValid = true;
+      }
+    }
+
     if (!isValid) {
       res.status(400).json({ message: 'Invalid 6-digit authenticator code. Check that the code is current and your phone clock is accurate.' });
       return;
@@ -347,7 +366,7 @@ router.post('/totp/verify-login', async (req, res) => {
 
     res.json({
       token,
-      user: formatUserResponse({ ...user, totpEnabled: 1 }, currentStreak, prepLevel),
+      user: formatUserResponse({ ...user, totpSecret: activeSecret, totpEnabled: 1 }, currentStreak, prepLevel),
     });
   } catch (error) {
     console.error('Verify login TOTP error:', error);
