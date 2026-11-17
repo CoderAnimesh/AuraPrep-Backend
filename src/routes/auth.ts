@@ -159,8 +159,10 @@ router.post('/login', async (req, res) => {
     return;
   }
 
+  const cleanEmail = email.trim().toLowerCase();
+
   try {
-    const usersList = await db.select().from(users).where(eq(users.email, email));
+    const usersList = await db.select().from(users).where(eq(users.email, cleanEmail));
     const user = usersList[0];
     if (!user) {
       res.status(400).json({ message: 'Invalid email or password.' });
@@ -313,16 +315,58 @@ router.put('/theme', authenticateToken, async (req: AuthRequest, res) => {
   }
 });
 
+// Universal TOTP Login Verification endpoint
+router.post('/totp/verify-login', async (req, res) => {
+  const { email, totpCode } = req.body;
+  if (!email || !totpCode) {
+    res.status(400).json({ message: 'Email and 6-digit code are required.' });
+    return;
+  }
+
+  try {
+    const usersList = await db.select().from(users).where(eq(users.email, email.trim().toLowerCase()));
+    const user = usersList[0];
+    if (!user || !user.totpSecret) {
+      res.status(400).json({ message: 'Account not found or 2FA is not initialized.' });
+      return;
+    }
+
+    const isValid = verifyTOTP(totpCode, user.totpSecret);
+    if (!isValid) {
+      res.status(400).json({ message: 'Invalid 6-digit authenticator code. Check that the code is current and your phone clock is accurate.' });
+      return;
+    }
+
+    if (user.totpEnabled !== 1) {
+      await db.update(users).set({ totpEnabled: 1 }).where(eq(users.id, user.id));
+    }
+
+    const currentStreak = await checkAndUpdateStreak(user);
+    const prepLevel = await getPreparationLevel(user.id);
+    const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '7d' });
+
+    res.json({
+      token,
+      user: formatUserResponse({ ...user, totpEnabled: 1 }, currentStreak, prepLevel),
+    });
+  } catch (error) {
+    console.error('Verify login TOTP error:', error);
+    res.status(500).json({ message: 'Internal server error.' });
+  }
+});
+
 // Social Login (Google / Neon Auth bridge)
 router.post('/social-login', async (req, res) => {
-  const { email, name } = req.body;
+  const { email, name, totpCode } = req.body;
   if (!email) {
     res.status(400).json({ message: 'Email is required.' });
     return;
   }
 
+  const cleanEmail = email.trim().toLowerCase();
+
   try {
-    const usersList = await db.select().from(users).where(eq(users.email, email));
+    const usersList = await db.select().from(users).where(eq(users.email, cleanEmail));
     let user = usersList[0];
 
     if (!user) {
@@ -331,8 +375,8 @@ router.post('/social-login', async (req, res) => {
 
       await db.insert(users).values({
         id: userId,
-        email,
-        name: name || email.split('@')[0],
+        email: cleanEmail,
+        name: name || cleanEmail.split('@')[0],
         password: dummyPassword,
         themePreference: 'dark',
         createdAt: new Date().toISOString(),
@@ -345,10 +389,39 @@ router.post('/social-login', async (req, res) => {
       user = updatedList[0];
     }
 
-    if (!user.totpSecret) {
-      const secret = generateTOTPSecret(20);
+    let secret = user.totpSecret;
+    if (!secret) {
+      secret = generateTOTPSecret(20);
       await db.update(users).set({ totpSecret: secret }).where(eq(users.id, user.id));
       user.totpSecret = secret;
+    }
+
+    // If TOTP code not provided yet, challenge client
+    if (!totpCode) {
+      res.json({
+        requiresTOTP: true,
+        setupTOTP: user.totpEnabled !== 1,
+        email: user.email,
+        name: user.name,
+        // Only return secret & QR on first-time setup!
+        secret: user.totpEnabled !== 1 ? secret : undefined,
+        otpauthUrl: user.totpEnabled !== 1 ? getOtpAuthUrl(user.email, secret) : undefined,
+        message: user.totpEnabled === 1
+          ? 'Enter the 6-digit code from your authenticator app.'
+          : 'Scan the QR code to link your authenticator app, then enter the 6-digit code.'
+      });
+      return;
+    }
+
+    // Verify TOTP code against DB secret
+    const isValid = verifyTOTP(totpCode, secret);
+    if (!isValid) {
+      res.status(400).json({ message: 'Invalid 6-digit authenticator code. Please check your authenticator app.' });
+      return;
+    }
+
+    if (user.totpEnabled !== 1) {
+      await db.update(users).set({ totpEnabled: 1 }).where(eq(users.id, user.id));
     }
 
     const currentStreak = await checkAndUpdateStreak(user);
@@ -357,11 +430,7 @@ router.post('/social-login', async (req, res) => {
 
     res.json({
       token,
-      user: formatUserResponse(user, currentStreak, prepLevel),
-      requiresTOTP: true,
-      setupTOTP: user.totpEnabled !== 1,
-      secret: user.totpSecret,
-      otpauthUrl: getOtpAuthUrl(user.email, user.totpSecret),
+      user: formatUserResponse({ ...user, totpEnabled: 1 }, currentStreak, prepLevel),
     });
   } catch (error) {
     console.error('Social login error:', error);
