@@ -8,19 +8,14 @@ import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 
-// Key ID & Key Secret (Test Keys with environment overrides)
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_AuraPrep2026';
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'SecretAuraPrepTestKey2026';
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID;
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
 
-let razorpayInstance: Razorpay | null = null;
-try {
-  razorpayInstance = new Razorpay({
-    key_id: RAZORPAY_KEY_ID,
-    key_secret: RAZORPAY_KEY_SECRET,
-  });
-} catch (e) {
-  console.warn('[Payments] Razorpay initialization warning:', e);
-}
+const getRazorpay = () => {
+  const key_id = process.env.RAZORPAY_KEY_ID || RAZORPAY_KEY_ID;
+  const key_secret = process.env.RAZORPAY_KEY_SECRET || RAZORPAY_KEY_SECRET;
+  return new Razorpay({ key_id, key_secret });
+};
 
 // Plan Prices in INR
 const PRICING: Record<string, { amountInINR: number; amountInPaise: number; description: string }> = {
@@ -43,7 +38,7 @@ const PRICING: Record<string, { amountInINR: number; amountInPaise: number; desc
 
 // Create Razorpay Order
 router.post('/create-order', authenticateToken, async (req: AuthRequest, res) => {
-  const { planType } = req.body;
+  const { planType, language } = req.body;
   const userId = req.userId!;
 
   if (!planType || !PRICING[planType]) {
@@ -56,52 +51,45 @@ router.post('/create-order', authenticateToken, async (req: AuthRequest, res) =>
 
   const plan = PRICING[planType];
   const receiptId = `rcpt_${userId.substring(0, 8)}_${Date.now()}`;
+  const targetLanguage = (language || 'english').toLowerCase();
 
   try {
-    let orderId = `order_${crypto.randomBytes(12).toString('hex')}`;
+    const keyId = process.env.RAZORPAY_KEY_ID || RAZORPAY_KEY_ID;
+    const rzp = getRazorpay();
 
-    if (razorpayInstance && process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
-      const razorpayOrder = await razorpayInstance.orders.create({
-        amount: plan.amountInPaise,
-        currency: 'INR',
-        receipt: receiptId,
-        notes: {
-          userId,
-          planType,
-          userEmail: currentUser ? currentUser.email : '',
-        },
-      });
-      orderId = razorpayOrder.id;
-    }
+    const razorpayOrder = await rzp.orders.create({
+      amount: plan.amountInPaise,
+      currency: 'INR',
+      receipt: receiptId,
+      notes: {
+        userId,
+        planType,
+        language: targetLanguage,
+        userEmail: currentUser ? currentUser.email : '',
+      },
+    });
 
     res.json({
-      orderId,
+      orderId: razorpayOrder.id,
       amount: plan.amountInPaise,
       amountInINR: plan.amountInINR,
       currency: 'INR',
-      keyId: RAZORPAY_KEY_ID,
+      keyId,
       planType,
+      language: targetLanguage,
       description: plan.description,
     });
   } catch (err: any) {
-    console.error('Razorpay order creation error:', err);
-    // Fallback order ID for testing mode if Razorpay API rejected test key
-    const fallbackOrderId = `order_test_${crypto.randomBytes(10).toString('hex')}`;
-    res.json({
-      orderId: fallbackOrderId,
-      amount: plan.amountInPaise,
-      amountInINR: plan.amountInINR,
-      currency: 'INR',
-      keyId: RAZORPAY_KEY_ID,
-      planType,
-      description: plan.description,
+    console.error('[Payments] Razorpay order creation error:', err);
+    res.status(500).json({
+      message: err.error?.description || err.message || 'Failed to create payment order with Razorpay.',
     });
   }
 });
 
 // Verify Payment Signature & Activate Subscription / Practice Access
 router.post('/verify', authenticateToken, async (req: AuthRequest, res) => {
-  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planType } = req.body;
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planType, language } = req.body;
   const userId = req.userId!;
 
   if (!planType || !PRICING[planType]) {
@@ -110,21 +98,24 @@ router.post('/verify', authenticateToken, async (req: AuthRequest, res) => {
   }
 
   const plan = PRICING[planType];
+  const keySecret = process.env.RAZORPAY_KEY_SECRET || RAZORPAY_KEY_SECRET;
+  if (!keySecret) {
+    res.status(500).json({ message: 'Razorpay secret key is not configured on the server.' });
+    return;
+  }
+  const targetLanguage = (language || 'english').toLowerCase();
 
   try {
-    // Signature Verification (or test fallback verification)
+    // Signature Verification
     let isSignatureValid = false;
 
-    if (razorpay_order_id && razorpay_payment_id && razorpay_signature && process.env.RAZORPAY_KEY_SECRET) {
+    if (razorpay_order_id && razorpay_payment_id && razorpay_signature) {
       const body = razorpay_order_id + '|' + razorpay_payment_id;
       const expectedSignature = crypto
-        .createHmac('sha256', RAZORPAY_KEY_SECRET)
+        .createHmac('sha256', keySecret)
         .update(body.toString())
         .digest('hex');
       isSignatureValid = expectedSignature === razorpay_signature;
-    } else {
-      // In test mode without custom live secret, accept completed test transactions
-      isSignatureValid = true;
     }
 
     if (!isSignatureValid) {
@@ -140,14 +131,37 @@ router.post('/verify', authenticateToken, async (req: AuthRequest, res) => {
     let vocabExpiresAt = currentUser ? currentUser.vocabExpiresAt : null;
     let practiceAccess = currentUser ? currentUser.practiceAccess : 0;
 
+    let unlockedMap: Record<string, { plan: string; expiresAt: string }> = {};
+    try {
+      if (currentUser && currentUser.unlockedLanguages) {
+        unlockedMap = JSON.parse(currentUser.unlockedLanguages);
+      }
+    } catch (e) {
+      unlockedMap = {};
+    }
+
+    // Language specific expiry calculation
+    const existingLangExpiry = unlockedMap[targetLanguage]?.expiresAt;
+    const langBaseTime = (existingLangExpiry && new Date(existingLangExpiry).getTime() > now)
+      ? new Date(existingLangExpiry).getTime()
+      : now;
+
     if (planType === 'vocab_monthly') {
       vocabPlanType = 'monthly';
-      const expiryDate = new Date(now + 30 * 24 * 60 * 60 * 1000);
+      const expiryDate = new Date(langBaseTime + 30 * 24 * 60 * 60 * 1000);
       vocabExpiresAt = expiryDate.toISOString();
+      unlockedMap[targetLanguage] = {
+        plan: 'monthly',
+        expiresAt: expiryDate.toISOString(),
+      };
     } else if (planType === 'vocab_yearly') {
       vocabPlanType = 'yearly';
-      const expiryDate = new Date(now + 365 * 24 * 60 * 60 * 1000);
+      const expiryDate = new Date(langBaseTime + 365 * 24 * 60 * 60 * 1000);
       vocabExpiresAt = expiryDate.toISOString();
+      unlockedMap[targetLanguage] = {
+        plan: 'yearly',
+        expiresAt: expiryDate.toISOString(),
+      };
     } else if (planType === 'practice_pass') {
       practiceAccess = 1;
     }
@@ -160,6 +174,7 @@ router.post('/verify', authenticateToken, async (req: AuthRequest, res) => {
         vocabExpiresAt,
         practiceAccess,
         autoRenew: 1,
+        unlockedLanguages: JSON.stringify(unlockedMap),
       })
       .where(eq(users.id, userId));
 

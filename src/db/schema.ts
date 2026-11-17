@@ -5,6 +5,8 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 256 }).unique().notNull(),
   name: text('name').notNull(),
   password: text('password').notNull(),
+  totpSecret: text('totp_secret'),
+  totpEnabled: integer('totp_enabled').default(0).notNull(), // 0 = disabled, 1 = enabled
   themePreference: varchar('theme_preference', { length: 50 }).default('dark').notNull(),
   createdAt: text('created_at').notNull(),
   loginStreak: integer('login_streak').default(1).notNull(),
@@ -18,6 +20,7 @@ export const users = pgTable('users', {
   vocabExpiresAt: text('vocab_expires_at'),
   practiceAccess: integer('practice_access').default(0).notNull(), // 0 = locked, 1 = unlocked
   autoRenew: integer('auto_renew').default(1).notNull(), // 1 = active auto renew
+  unlockedLanguages: text('unlocked_languages').default('{}'), // JSON: { [langCode]: { plan: 'monthly'|'yearly', expiresAt: string } }
 });
 
 export const payments = pgTable('payments', {

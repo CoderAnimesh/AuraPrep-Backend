@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { studyPlans, studyDays, studyTasks, userTaskProgress } from '../db/schema.js';
 import { eq, and, inArray } from 'drizzle-orm';
 import { authenticateToken, AuthRequest, extractOptionalUserId } from '../middleware/auth.js';
+import crypto from 'crypto';
 
 const router = Router();
 
@@ -118,4 +119,107 @@ router.post('/tasks/:taskId/toggle', authenticateToken, async (req: AuthRequest,
   }
 });
 
+// AI Chat Endpoint with Gemini API Integration
+router.post('/ai-chat', async (req, res) => {
+  const { message, history, context } = req.body;
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey || apiKey === 'your_gemini_api_key_here') {
+    res.json({
+      success: false,
+      isConfigured: false,
+      message: 'GEMINI_API_KEY is not configured in backend/.env',
+    });
+    return;
+  }
+
+  try {
+    const systemPrompt = `You are "VocabMentor AI", a premier GRE Verbal & Quantitative reasoning tutor designed for the AuraPrep platform (Gregmat mastery curriculum).
+Your primary role is to help students with:
+1. Reading, defining, and pronouncing high-frequency GRE vocabulary with phonetics, concise definitions, and memorable visual mnemonics.
+2. Breaking down Sentence Equivalence & Text Completion contrast clues, pivot words (Although, However, Far from, Paradoxically, Despite), and matching synonymous pairs.
+3. Explaining Reading Comprehension passages: tone, primary purpose, and eliminating deceptive ETS answer choices.
+4. Answering questions about Quant concepts (Prime factorization, exponents, triangles, geometry, data interpretation).
+
+Formatting guidelines:
+- Keep explanations structured, energetic, clear, and encouraging.
+- When explaining words, include: Phonetics, Part of speech, Definition, Pairing Synonyms, Antonyms, Mnemonic hook, and GRE example sentence.
+- Use bolding and concise bullet points.`;
+
+    const contents = [];
+
+    // Add conversation history if provided
+    if (Array.isArray(history)) {
+      for (const h of history) {
+        if (h.sender && h.text) {
+          contents.push({
+            role: h.sender === 'user' ? 'user' : 'model',
+            parts: [{ text: h.text }],
+          });
+        }
+      }
+    }
+
+    // Add current user message
+    contents.push({
+      role: 'user',
+      parts: [
+        {
+          text: context
+            ? `[Context: ${context}]\n\nUser Question: ${message}`
+            : message,
+        },
+      ],
+    });
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents,
+          systemInstruction: {
+            parts: [{ text: systemPrompt }],
+          },
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 1000,
+          },
+        }),
+      }
+    );
+
+    const data: any = await response.json();
+
+    if (!response.ok) {
+      console.error('Gemini API Error:', data);
+      res.status(500).json({
+        success: false,
+        isConfigured: true,
+        error: data.error?.message || 'Failed to call Gemini API',
+      });
+      return;
+    }
+
+    const replyText =
+      data.candidates?.[0]?.content?.parts?.[0]?.text ||
+      'No response generated from Gemini.';
+
+    res.json({
+      success: true,
+      isConfigured: true,
+      reply: replyText,
+    });
+  } catch (error: any) {
+    console.error('Error invoking Gemini API:', error);
+    res.status(500).json({
+      success: false,
+      isConfigured: true,
+      error: error.message || 'Internal server error while calling Gemini API',
+    });
+  }
+});
+
 export default router;
+

@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { authenticateToken, AuthRequest, getJwtSecret } from '../middleware/auth.js';
 import crypto from 'crypto';
+import { generateTOTPSecret, verifyTOTP, getOtpAuthUrl } from '../utils/totp.js';
 
 const router = Router();
 
@@ -34,6 +35,8 @@ function formatUserResponse(user: any, streak: number = 1, prepLevel: string = '
     vocabExpiresAt,
     practiceAccess: user.practiceAccess || 0,
     autoRenew: user.autoRenew || 1,
+    unlockedLanguages: user.unlockedLanguages || '{}',
+    totpEnabled: user.totpEnabled === 1,
   };
 }
 
@@ -150,7 +153,7 @@ router.post('/register', async (req, res) => {
 
 // Login
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, totpCode } = req.body;
   if (!email || !password) {
     res.status(400).json({ message: 'Email and password are required.' });
     return;
@@ -170,15 +173,106 @@ router.post('/login', async (req, res) => {
       return;
     }
 
+    // Ensure user has a TOTP secret assigned
+    let secret = user.totpSecret;
+    if (!secret) {
+      secret = generateTOTPSecret(20);
+      await db.update(users).set({ totpSecret: secret }).where(eq(users.id, user.id));
+    }
+
+    // If TOTP code was not provided in this request, challenge the client
+    if (!totpCode) {
+      res.json({
+        requiresTOTP: true,
+        setupTOTP: user.totpEnabled !== 1,
+        email: user.email,
+        secret: user.totpEnabled !== 1 ? secret : undefined,
+        otpauthUrl: user.totpEnabled !== 1 ? getOtpAuthUrl(user.email, secret) : undefined,
+        message: user.totpEnabled === 1
+          ? 'Enter the 6-digit code from your authenticator app.'
+          : 'Please add the setup key to your authenticator app and enter the 6-digit code.'
+      });
+      return;
+    }
+
+    // TOTP code provided: verify it
+    const isValidTOTP = verifyTOTP(totpCode, secret);
+    if (!isValidTOTP) {
+      res.status(400).json({ message: 'Invalid 6-digit authenticator code. Please check your authenticator app.' });
+      return;
+    }
+
+    // If first-time verification, mark TOTP as enabled
+    if (user.totpEnabled !== 1) {
+      await db.update(users).set({ totpEnabled: 1 }).where(eq(users.id, user.id));
+    }
+
     const currentStreak = await checkAndUpdateStreak(user);
     const prepLevel = await getPreparationLevel(user.id);
     const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '7d' });
     res.json({
       token,
-      user: formatUserResponse(user, currentStreak, prepLevel),
+      user: formatUserResponse({ ...user, totpEnabled: 1 }, currentStreak, prepLevel),
     });
   } catch (error) {
     console.error('Login error:', error);
+    res.status(500).json({ message: 'Internal server error.' });
+  }
+});
+
+// Setup TOTP (Authenticated)
+router.post('/totp/setup', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const usersList = await db.select().from(users).where(eq(users.id, req.userId!));
+    const user = usersList[0];
+    if (!user) {
+      res.status(404).json({ message: 'User not found.' });
+      return;
+    }
+
+    let secret = user.totpSecret;
+    if (!secret) {
+      secret = generateTOTPSecret(20);
+      await db.update(users).set({ totpSecret: secret }).where(eq(users.id, user.id));
+    }
+
+    res.json({
+      secret,
+      otpauthUrl: getOtpAuthUrl(user.email, secret),
+      totpEnabled: user.totpEnabled === 1,
+    });
+  } catch (error) {
+    console.error('TOTP setup error:', error);
+    res.status(500).json({ message: 'Internal server error.' });
+  }
+});
+
+// Verify TOTP (Authenticated)
+router.post('/totp/verify', authenticateToken, async (req: AuthRequest, res) => {
+  const { code } = req.body;
+  if (!code) {
+    res.status(400).json({ message: '6-digit verification code is required.' });
+    return;
+  }
+
+  try {
+    const usersList = await db.select().from(users).where(eq(users.id, req.userId!));
+    const user = usersList[0];
+    if (!user || !user.totpSecret) {
+      res.status(400).json({ message: 'TOTP is not initialized for this account.' });
+      return;
+    }
+
+    const isValid = verifyTOTP(code, user.totpSecret);
+    if (!isValid) {
+      res.status(400).json({ message: 'Invalid 6-digit code. Please try again.' });
+      return;
+    }
+
+    await db.update(users).set({ totpEnabled: 1 }).where(eq(users.id, user.id));
+    res.json({ message: 'Two-factor authentication successfully enabled.', totpEnabled: true });
+  } catch (error) {
+    console.error('TOTP verify error:', error);
     res.status(500).json({ message: 'Internal server error.' });
   }
 });
@@ -251,6 +345,12 @@ router.post('/social-login', async (req, res) => {
       user = updatedList[0];
     }
 
+    if (!user.totpSecret) {
+      const secret = generateTOTPSecret(20);
+      await db.update(users).set({ totpSecret: secret }).where(eq(users.id, user.id));
+      user.totpSecret = secret;
+    }
+
     const currentStreak = await checkAndUpdateStreak(user);
     const prepLevel = await getPreparationLevel(user.id);
     const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '7d' });
@@ -258,6 +358,10 @@ router.post('/social-login', async (req, res) => {
     res.json({
       token,
       user: formatUserResponse(user, currentStreak, prepLevel),
+      requiresTOTP: true,
+      setupTOTP: user.totpEnabled !== 1,
+      secret: user.totpSecret,
+      otpauthUrl: getOtpAuthUrl(user.email, user.totpSecret),
     });
   } catch (error) {
     console.error('Social login error:', error);

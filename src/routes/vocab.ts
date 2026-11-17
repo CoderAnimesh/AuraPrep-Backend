@@ -17,37 +17,66 @@ router.get('/groups/:groupNumber/words', async (req: AuthRequest, res) => {
   }
 
   const { language } = req.query;
-  const targetLanguage = (language as string) || 'english';
+  const targetLanguage = ((language as string) || 'english').toLowerCase();
   const userId = extractOptionalUserId(req);
 
   // Check subscription access
-  const isEnglish = targetLanguage.toLowerCase() === 'english';
+  const isEnglish = targetLanguage === 'english';
   const isModule1 = parsedGroup === 1;
 
-  // Foreign languages OR English Module 2+ require active subscription
-  if (!isEnglish || !isModule1) {
+  // English Module 1 is FREE for all users
+  if (!(isEnglish && isModule1)) {
     if (!userId) {
       res.status(403).json({
         message: !isEnglish
-          ? 'Access locked. Foreign languages require an active VocabHub plan.'
-          : 'Access locked. English Module 2+ requires an active VocabHub plan.',
+          ? `Access locked. Learning ${targetLanguage} requires an active subscription.`
+          : 'Access locked. English Module 2+ requires an active subscription.',
       });
       return;
     }
 
     const userList = await db.select().from(users).where(eq(users.id, userId));
     const user = userList[0];
-    const isSubscribed =
+
+    // Parse user's unlocked languages map
+    let unlockedMap: Record<string, { plan: string; expiresAt: string }> = {};
+    try {
+      if (user && user.unlockedLanguages) {
+        unlockedMap = JSON.parse(user.unlockedLanguages);
+      }
+    } catch (e) {
+      unlockedMap = {};
+    }
+
+    const langInfo = unlockedMap[targetLanguage];
+    const isLangActive =
+      langInfo &&
+      langInfo.expiresAt &&
+      new Date(langInfo.expiresAt).getTime() > Date.now();
+
+    const isEnglishLegacyActive =
+      isEnglish &&
       user &&
       user.vocabPlanType !== 'none' &&
       user.vocabExpiresAt &&
       new Date(user.vocabExpiresAt).getTime() > Date.now();
 
-    if (!isSubscribed) {
+    if (!isLangActive && !isEnglishLegacyActive) {
       res.status(403).json({
         message: !isEnglish
-          ? 'Access locked. Foreign languages require an active VocabHub plan (₹499/mo or ₹2944/yr).'
+          ? `Access locked. ${targetLanguage} is currently locked on your account. Unlock ${targetLanguage} with a plan (₹499/mo or ₹2944/yr).`
           : 'Access locked. English Module 2+ requires an active VocabHub plan (₹499/mo or ₹2944/yr).',
+      });
+      return;
+    }
+
+    // Check module access according to plan:
+    // Monthly Plan: Modules 1 to 5
+    // Yearly Plan: All Modules 1 to 10
+    const activePlan = langInfo?.plan || (isEnglishLegacyActive ? user.vocabPlanType : 'monthly');
+    if (activePlan === 'monthly' && parsedGroup > 5 && parsedGroup !== 99) {
+      res.status(403).json({
+        message: `Module ${parsedGroup} is locked on the Monthly Plan. Upgrade to the Yearly Plan to unlock Modules 6 to 10 for ${targetLanguage}.`,
       });
       return;
     }
