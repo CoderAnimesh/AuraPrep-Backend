@@ -10,23 +10,69 @@ import paymentRoutes from './routes/payments.js';
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Universal CORS Middleware to allow all Netlify and local origins
+// Strict Origin Whitelist: Only localhost, aurapre.netlify.app, auraprep.netlify.app, and auraprep.us.ci
+const isAllowedOrigin = (origin: string): boolean => {
+  if (!origin) return false;
+
+  try {
+    const parsed = new URL(origin);
+    const host = parsed.hostname.toLowerCase();
+
+    // 1. Localhost and local loopback
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return true;
+    }
+
+    // 2. Netlify deployments
+    if (
+      host === 'aurapre.netlify.app' ||
+      host === 'auraprep.netlify.app' ||
+      host.endsWith('.aurapre.netlify.app') ||
+      host.endsWith('.auraprep.netlify.app')
+    ) {
+      return true;
+    }
+
+    // 3. Custom domain
+    if (
+      host === 'auraprep.us.ci' ||
+      host === 'www.auraprep.us.ci' ||
+      host.endsWith('.auraprep.us.ci')
+    ) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+};
+
+// CORS Middleware enforcing allowed origins
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  }
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
 
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+  // Allow requests without Origin header (e.g. server-to-server, health checks, curl, mobile clients)
+  if (!origin) {
+    return next();
   }
-  next();
+
+  if (isAllowedOrigin(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+
+    if (req.method === 'OPTIONS') {
+      res.status(204).end();
+      return;
+    }
+    return next();
+  }
+
+  // Reject unauthorized origins
+  console.warn(`[CORS Blocked] Request from unauthorized origin: ${origin}`);
+  res.status(403).json({ message: 'CORS policy: Access denied for this origin.' });
 });
 
 app.use(express.json());
