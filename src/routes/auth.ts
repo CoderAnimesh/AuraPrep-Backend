@@ -14,6 +14,12 @@ import {
   sendPasswordChangedEmail,
   sendLeadKitEmail,
 } from '../utils/mailer.js';
+import {
+  loginRateLimiter,
+  otpRateLimiter,
+  forgotPasswordRateLimiter,
+  totpVerifyRateLimiter,
+} from '../middleware/rateLimiter.js';
 
 const router = Router();
 
@@ -109,8 +115,8 @@ async function checkAndUpdateStreak(user: any) {
   }
 }
 
-// Send Sign-Up Email OTP via Unitpost
-router.post('/send-signup-otp', async (req, res) => {
+// Send Sign-Up Email OTP via Unitpost (Rate Limited)
+router.post('/send-signup-otp', otpRateLimiter, async (req, res) => {
   const { email, name } = req.body;
   if (!email || !email.includes('@')) {
     res.status(400).json({ message: 'A valid email address is required.' });
@@ -152,9 +158,51 @@ router.post('/send-signup-otp', async (req, res) => {
   }
 });
 
-// Register
+// Verify Sign-Up Email OTP and generate fresh TOTP secret for pairing
+router.post('/verify-signup-otp', otpRateLimiter, async (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) {
+    res.status(400).json({ message: 'Email and verification code are required.' });
+    return;
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    const records = await db
+      .select()
+      .from(emailVerifications)
+      .where(eq(emailVerifications.email, cleanEmail));
+
+    const validRecord = records.find(
+      (r) => r.otp === otp.trim() && new Date(r.expiresAt).getTime() > Date.now()
+    );
+
+    if (!validRecord) {
+      res.status(400).json({ message: 'Invalid or expired email verification code. Please request a new code.' });
+      return;
+    }
+
+    // Generate secure Base32 TOTP secret for authenticator app pairing
+    const totpSecret = generateTOTPSecret(20);
+    const otpauthUrl = getOtpAuthUrl(cleanEmail, totpSecret);
+
+    res.json({
+      valid: true,
+      email: cleanEmail,
+      totpSecret,
+      otpauthUrl,
+      message: 'Email verified. Please link your Authenticator app and enter the 6-digit TOTP code to complete registration.',
+    });
+  } catch (error) {
+    console.error('Verify signup OTP error:', error);
+    res.status(500).json({ message: 'Failed to verify email code. Please try again.' });
+  }
+});
+
+// Register with Email OTP + Authenticator TOTP verification
 router.post('/register', async (req, res) => {
-  const { email, name, password, otp } = req.body;
+  const { email, name, password, otp, totpSecret, totpCode } = req.body;
   if (!email || !name || !password) {
     res.status(400).json({ message: 'Email, name, and password are required.' });
     return;
@@ -173,7 +221,7 @@ router.post('/register', async (req, res) => {
       return;
     }
 
-    // Verify Email OTP
+    // 1. Verify Email OTP
     if (otp) {
       const records = await db
         .select()
@@ -188,10 +236,24 @@ router.post('/register', async (req, res) => {
         res.status(400).json({ message: 'Invalid or expired email verification code. Please request a new code.' });
         return;
       }
-
-      // Cleanup verification record
-      await db.delete(emailVerifications).where(eq(emailVerifications.email, cleanEmail));
     }
+
+    // 2. Verify Authenticator TOTP code if provided
+    let activeTotpSecret: string | null = null;
+    let totpEnabled = 0;
+
+    if (totpSecret && totpCode) {
+      const isValidTOTP = verifyTOTP(totpCode, totpSecret);
+      if (!isValidTOTP) {
+        res.status(400).json({ message: 'Invalid 6-digit authenticator code. Please check your authenticator app.' });
+        return;
+      }
+      activeTotpSecret = totpSecret;
+      totpEnabled = 1;
+    }
+
+    // Cleanup verification record
+    await db.delete(emailVerifications).where(eq(emailVerifications.email, cleanEmail));
 
     const passwordHash = await bcrypt.hash(password, 10);
     const userId = crypto.randomUUID();
@@ -203,6 +265,8 @@ router.post('/register', async (req, res) => {
       name,
       username: cleanUsername,
       password: passwordHash,
+      totpSecret: activeTotpSecret,
+      totpEnabled,
       themePreference: 'dark',
       createdAt: new Date().toISOString(),
       vocabPlanType: 'none',
@@ -229,8 +293,8 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// Request Password Reset Link via Unitpost
-router.post('/forgot-password', async (req, res) => {
+// Request Password Reset Link via Unitpost (Rate Limited)
+router.post('/forgot-password', forgotPasswordRateLimiter, async (req, res) => {
   const { email } = req.body;
   if (!email || !email.includes('@')) {
     res.status(400).json({ message: 'Please enter a valid email address.' });
@@ -419,8 +483,8 @@ router.post('/lead-kit', async (req, res) => {
   }
 });
 
-// Login
-router.post('/login', async (req, res) => {
+// Login (Rate Limited)
+router.post('/login', loginRateLimiter, async (req, res) => {
   const { email, password, totpCode } = req.body;
   if (!email || !password) {
     res.status(400).json({ message: 'Email and password are required.' });
@@ -583,8 +647,8 @@ router.put('/theme', authenticateToken, async (req: AuthRequest, res) => {
   }
 });
 
-// Universal TOTP Login Verification endpoint
-router.post('/totp/verify-login', async (req, res) => {
+// Universal TOTP Login Verification endpoint (Rate Limited)
+router.post('/totp/verify-login', totpVerifyRateLimiter, async (req, res) => {
   const { email, totpCode, secret: clientSecret } = req.body;
   if (!email || !totpCode) {
     res.status(400).json({ message: 'Email and 6-digit code are required.' });
@@ -642,8 +706,8 @@ router.post('/totp/verify-login', async (req, res) => {
   }
 });
 
-// Social Login (Google / Neon Auth bridge)
-router.post('/social-login', async (req, res) => {
+// Social Login (Google / Neon Auth bridge - Rate Limited)
+router.post('/social-login', loginRateLimiter, async (req, res) => {
   const { email, name, totpCode } = req.body;
   if (!email) {
     res.status(400).json({ message: 'Email is required.' });

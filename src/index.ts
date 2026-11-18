@@ -10,6 +10,8 @@ import paymentRoutes from './routes/payments.js';
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+app.set('trust proxy', 1);
+
 // Strict Origin Whitelist: Only localhost, aurapre.netlify.app, auraprep.netlify.app, and auraprep.us.ci
 const isAllowedOrigin = (origin: string): boolean => {
   if (!origin) return false;
