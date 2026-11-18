@@ -2,7 +2,7 @@ import { Router } from 'express';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import { db } from '../db/client.js';
-import { users, payments } from '../db/schema.js';
+import { users, payments, coupons } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
 import { sendPaymentSlipEmail } from '../utils/mailer.js';
@@ -37,9 +37,149 @@ const PRICING: Record<string, { amountInINR: number; amountInPaise: number; desc
   },
 };
 
+/**
+ * Validate and calculate discount for a coupon code
+ */
+export async function validateCoupon(code: string, planType: string) {
+  const plan = PRICING[planType];
+  if (!plan) {
+    return {
+      valid: false,
+      error: 'Invalid plan type selected.',
+      originalAmount: 0,
+      discountPercent: 0,
+      discountAmount: 0,
+      finalAmount: 0,
+      finalAmountInPaise: 0,
+    };
+  }
+
+  const cleanCode = (code || '').trim().toUpperCase();
+  if (!cleanCode) {
+    return {
+      valid: false,
+      error: 'Please enter a coupon code.',
+      originalAmount: plan.amountInINR,
+      discountPercent: 0,
+      discountAmount: 0,
+      finalAmount: plan.amountInINR,
+      finalAmountInPaise: plan.amountInPaise,
+    };
+  }
+
+  const list = await db.select().from(coupons).where(eq(coupons.code, cleanCode));
+  const coupon = list[0];
+
+  if (!coupon) {
+    return {
+      valid: false,
+      error: `Coupon "${cleanCode}" is not recognized or has expired.`,
+      originalAmount: plan.amountInINR,
+      discountPercent: 0,
+      discountAmount: 0,
+      finalAmount: plan.amountInINR,
+      finalAmountInPaise: plan.amountInPaise,
+    };
+  }
+
+  if (coupon.isActive !== 1) {
+    return {
+      valid: false,
+      error: `Coupon "${cleanCode}" has been disabled.`,
+      originalAmount: plan.amountInINR,
+      discountPercent: 0,
+      discountAmount: 0,
+      finalAmount: plan.amountInINR,
+      finalAmountInPaise: plan.amountInPaise,
+    };
+  }
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  if (coupon.startDate && todayStr < coupon.startDate) {
+    return {
+      valid: false,
+      error: `Coupon "${cleanCode}" starts on ${coupon.startDate}.`,
+      originalAmount: plan.amountInINR,
+      discountPercent: 0,
+      discountAmount: 0,
+      finalAmount: plan.amountInINR,
+      finalAmountInPaise: plan.amountInPaise,
+    };
+  }
+
+  if (coupon.endDate && todayStr > coupon.endDate) {
+    return {
+      valid: false,
+      error: `Coupon "${cleanCode}" expired on ${coupon.endDate}.`,
+      originalAmount: plan.amountInINR,
+      discountPercent: 0,
+      discountAmount: 0,
+      finalAmount: plan.amountInINR,
+      finalAmountInPaise: plan.amountInPaise,
+    };
+  }
+
+  if (coupon.maxUses > 0 && coupon.usedCount >= coupon.maxUses) {
+    return {
+      valid: false,
+      error: `Coupon "${cleanCode}" has reached its maximum usage limit.`,
+      originalAmount: plan.amountInINR,
+      discountPercent: 0,
+      discountAmount: 0,
+      finalAmount: plan.amountInINR,
+      finalAmountInPaise: plan.amountInPaise,
+    };
+  }
+
+  const originalAmount = plan.amountInINR;
+  const discountPercent = coupon.discountPercent;
+  const discountAmount = Math.round((originalAmount * discountPercent) / 100);
+  const finalAmount = Math.max(1, originalAmount - discountAmount);
+  const finalAmountInPaise = finalAmount * 100;
+
+  return {
+    valid: true,
+    code: cleanCode,
+    description: coupon.description,
+    discountPercent,
+    originalAmount,
+    discountAmount,
+    finalAmount,
+    finalAmountInPaise,
+    coupon,
+  };
+}
+
+// Check & Apply Coupon Code (Public for Checkout Preview)
+router.post('/apply-coupon', async (req, res) => {
+  const { couponCode, planType } = req.body;
+  if (!planType || !PRICING[planType]) {
+    res.status(400).json({ message: 'Invalid plan type.' });
+    return;
+  }
+
+  const result = await validateCoupon(couponCode, planType);
+  if (!result.valid) {
+    res.status(400).json({ message: result.error || 'Invalid coupon.' });
+    return;
+  }
+
+  res.json({
+    valid: true,
+    code: result.code,
+    description: result.description,
+    discountPercent: result.discountPercent,
+    originalAmount: result.originalAmount,
+    discountAmount: result.discountAmount,
+    finalAmount: result.finalAmount,
+    finalAmountInPaise: result.finalAmountInPaise,
+    message: `Coupon "${result.code}" applied! You save ₹${result.discountAmount} (${result.discountPercent}% off).`,
+  });
+});
+
 // Create Razorpay Order
 router.post('/create-order', authenticateToken, async (req: AuthRequest, res) => {
-  const { planType, language } = req.body;
+  const { planType, language, couponCode } = req.body;
   const userId = req.userId!;
 
   if (!planType || !PRICING[planType]) {
@@ -54,6 +194,24 @@ router.post('/create-order', authenticateToken, async (req: AuthRequest, res) =>
   const receiptId = `rcpt_${userId.substring(0, 8)}_${Date.now()}`;
   const targetLanguage = (language || 'english').toLowerCase();
 
+  // Calculate potential coupon discount
+  let finalAmountInPaise = plan.amountInPaise;
+  let finalAmountInINR = plan.amountInINR;
+  let appliedCouponCode: string | null = null;
+  let discountAmountInINR = 0;
+  let discountPercent = 0;
+
+  if (couponCode && typeof couponCode === 'string' && couponCode.trim() !== '') {
+    const couponVal = await validateCoupon(couponCode, planType);
+    if (couponVal.valid) {
+      finalAmountInPaise = couponVal.finalAmountInPaise;
+      finalAmountInINR = couponVal.finalAmount;
+      appliedCouponCode = couponVal.code || null;
+      discountAmountInINR = couponVal.discountAmount;
+      discountPercent = couponVal.discountPercent;
+    }
+  }
+
   try {
     const keyId = process.env.RAZORPAY_KEY_ID || RAZORPAY_KEY_ID || 'rzp_test_TZsAzjL74JugvO';
     const rzp = getRazorpay();
@@ -61,7 +219,7 @@ router.post('/create-order', authenticateToken, async (req: AuthRequest, res) =>
     let razorpayOrder: { id: string };
     try {
       razorpayOrder = await rzp.orders.create({
-        amount: plan.amountInPaise,
+        amount: finalAmountInPaise,
         currency: 'INR',
         receipt: receiptId,
         notes: {
@@ -69,6 +227,9 @@ router.post('/create-order', authenticateToken, async (req: AuthRequest, res) =>
           planType,
           language: targetLanguage,
           userEmail: currentUser ? currentUser.email : '',
+          couponCode: appliedCouponCode || '',
+          originalAmount: plan.amountInINR.toString(),
+          discountAmount: discountAmountInINR.toString(),
         },
       });
     } catch (orderCreateErr: any) {
@@ -80,8 +241,12 @@ router.post('/create-order', authenticateToken, async (req: AuthRequest, res) =>
 
     res.json({
       orderId: razorpayOrder.id,
-      amount: plan.amountInPaise,
-      amountInINR: plan.amountInINR,
+      amount: finalAmountInPaise,
+      amountInINR: finalAmountInINR,
+      originalAmount: plan.amountInINR,
+      discountAmount: discountAmountInINR,
+      discountPercent,
+      couponCode: appliedCouponCode,
       currency: 'INR',
       keyId,
       planType,
@@ -98,7 +263,7 @@ router.post('/create-order', authenticateToken, async (req: AuthRequest, res) =>
 
 // Verify Payment Signature & Activate Subscription / Practice Access
 router.post('/verify', authenticateToken, async (req: AuthRequest, res) => {
-  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planType, language } = req.body;
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planType, language, couponCode } = req.body;
   const userId = req.userId!;
 
   if (!planType || !PRICING[planType]) {
@@ -191,6 +356,29 @@ router.post('/verify', authenticateToken, async (req: AuthRequest, res) => {
       })
       .where(eq(users.id, userId));
 
+    // Calculate amounts with coupon discount if provided
+    let originalAmount = plan.amountInINR;
+    let finalAmount = plan.amountInINR;
+    let discountAmount = 0;
+    let appliedCode: string | null = null;
+
+    if (couponCode && typeof couponCode === 'string' && couponCode.trim() !== '') {
+      const couponVal = await validateCoupon(couponCode, planType);
+      if (couponVal.valid) {
+        finalAmount = couponVal.finalAmount;
+        discountAmount = couponVal.discountAmount;
+        appliedCode = couponVal.code || null;
+
+        // Increment coupon redemption count
+        if (couponVal.coupon) {
+          await db
+            .update(coupons)
+            .set({ usedCount: (couponVal.coupon.usedCount || 0) + 1 })
+            .where(eq(coupons.id, couponVal.coupon.id));
+        }
+      }
+    }
+
     // Record Payment Transaction
     const paymentId = `pay_${crypto.randomUUID()}`;
     const effectivePaymentId = razorpay_payment_id || `pay_sim_${Date.now()}`;
@@ -203,12 +391,15 @@ router.post('/verify', authenticateToken, async (req: AuthRequest, res) => {
       razorpayPaymentId: effectivePaymentId,
       razorpaySignature: razorpay_signature || 'simulated_test_sig',
       planType,
-      amount: plan.amountInINR,
+      amount: finalAmount,
+      originalAmount,
+      discountAmount,
+      couponCode: appliedCode,
       status: 'completed',
       createdAt: new Date().toISOString(),
     });
 
-    // Dispatch Official Payment Slip & Tax Invoice via Unitpost
+    // Dispatch Official Payment Slip & Tax Invoice via Unitpost (Mentions coupon discount!)
     try {
       const recipientEmail = currentUser?.email;
       if (recipientEmail) {
@@ -225,7 +416,10 @@ router.post('/verify', authenticateToken, async (req: AuthRequest, res) => {
           invoiceNumber,
           paymentId: effectivePaymentId,
           orderId: razorpay_order_id,
-          amount: plan.amountInINR,
+          amount: finalAmount,
+          originalAmount,
+          discountAmount,
+          couponCode: appliedCode || undefined,
           planType,
           language: targetLanguage,
           paymentDate: new Date().toLocaleString('en-US', {
@@ -235,7 +429,7 @@ router.post('/verify', authenticateToken, async (req: AuthRequest, res) => {
           }),
           expiryDate: calculatedExpiry,
         });
-        console.log(`[Payments] Payment slip ${invoiceNumber} dispatched to ${recipientEmail} for language: ${targetLanguage}`);
+        console.log(`[Payments] Payment slip ${invoiceNumber} dispatched to ${recipientEmail} (Paid: ₹${finalAmount}${appliedCode ? ` with coupon ${appliedCode}` : ''})`);
       }
     } catch (mailErr) {
       console.error('[Payments] Failed to dispatch payment slip email:', mailErr);
@@ -251,6 +445,9 @@ router.post('/verify', authenticateToken, async (req: AuthRequest, res) => {
       success: true,
       message: 'Payment verified successfully! Access granted and payment slip sent to your email.',
       invoiceNumber,
+      amountPaid: finalAmount,
+      discountAmount,
+      couponCode: appliedCode,
       user: userWithoutPassword,
     });
   } catch (err: any) {

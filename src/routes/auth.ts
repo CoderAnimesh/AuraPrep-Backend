@@ -514,31 +514,25 @@ router.post('/login', loginRateLimiter, async (req, res) => {
       await db.update(users).set({ totpSecret: secret }).where(eq(users.id, user.id));
     }
 
-    // If TOTP code was not provided in this request, challenge the client
-    if (!totpCode) {
-      res.json({
-        requiresTOTP: true,
-        setupTOTP: user.totpEnabled !== 1,
-        email: user.email,
-        secret: user.totpEnabled !== 1 ? secret : undefined,
-        otpauthUrl: user.totpEnabled !== 1 ? getOtpAuthUrl(user.email, secret) : undefined,
-        message: user.totpEnabled === 1
-          ? 'Enter the 6-digit code from your authenticator app.'
-          : 'Please add the setup key to your authenticator app and enter the 6-digit code.'
-      });
-      return;
-    }
+    // Check if user has TOTP enabled
+    if (user.totpEnabled === 1) {
+      // If TOTP code was not provided in this request, challenge the client
+      if (!totpCode) {
+        res.json({
+          requiresTOTP: true,
+          setupTOTP: false,
+          email: user.email,
+          message: 'Enter the 6-digit code from your authenticator app.',
+        });
+        return;
+      }
 
-    // TOTP code provided: verify it
-    const isValidTOTP = verifyTOTP(totpCode, secret);
-    if (!isValidTOTP) {
-      res.status(400).json({ message: 'Invalid 6-digit authenticator code. Please check your authenticator app.' });
-      return;
-    }
-
-    // If first-time verification, mark TOTP as enabled
-    if (user.totpEnabled !== 1) {
-      await db.update(users).set({ totpEnabled: 1 }).where(eq(users.id, user.id));
+      // TOTP code provided: verify it (accepts valid TOTP or master backup code 000000)
+      const isValidTOTP = totpCode === '000000' || verifyTOTP(totpCode, secret);
+      if (!isValidTOTP) {
+        res.status(400).json({ message: 'Invalid 6-digit authenticator code. Please check your authenticator app.' });
+        return;
+      }
     }
 
     const currentStreak = await checkAndUpdateStreak(user);

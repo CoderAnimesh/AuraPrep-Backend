@@ -30,8 +30,25 @@ export const payments = pgTable('payments', {
   razorpayPaymentId: varchar('razorpay_payment_id', { length: 256 }),
   razorpaySignature: text('razorpay_signature'),
   planType: varchar('plan_type', { length: 100 }).notNull(), // 'vocab_monthly' | 'vocab_yearly' | 'practice_pass'
-  amount: integer('amount').notNull(), // in INR
+  amount: integer('amount').notNull(), // in INR (final paid)
+  originalAmount: integer('original_amount'), // in INR before discount
+  discountAmount: integer('discount_amount').default(0), // in INR
+  couponCode: varchar('coupon_code', { length: 100 }), // Applied coupon code if any
   status: varchar('status', { length: 50 }).default('completed').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
+export const coupons = pgTable('coupons', {
+  id: varchar('id', { length: 256 }).primaryKey(),
+  code: varchar('code', { length: 100 }).unique().notNull(),
+  description: text('description').notNull(),
+  discountPercent: integer('discount_percent').notNull(), // e.g. 20 (for 20% discount)
+  startDate: text('start_date').notNull(), // YYYY-MM-DD
+  endDate: text('end_date').notNull(), // YYYY-MM-DD
+  maxUses: integer('max_uses').default(0).notNull(), // 0 = unlimited
+  usedCount: integer('used_count').default(0).notNull(),
+  isActive: integer('is_active').default(1).notNull(), // 1 = active, 0 = disabled
+  createdBy: varchar('created_by', { length: 256 }).default('animeshpathak78@gmail.com').notNull(),
   createdAt: text('created_at').notNull(),
 });
 

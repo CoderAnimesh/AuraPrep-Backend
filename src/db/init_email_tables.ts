@@ -10,7 +10,9 @@ if (!connectionString) {
   process.exit(1);
 }
 
-const sql = postgres(connectionString);
+const sql = postgres(connectionString, {
+  onnotice: () => {},
+});
 
 export async function initAuthEmailTables() {
   console.log('Ensuring email_verifications and password_resets tables exist...');

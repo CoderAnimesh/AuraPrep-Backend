@@ -9,5 +9,7 @@ if (!connectionString) {
   throw new Error('DATABASE_URL environment variable is missing.');
 }
 
-const client = postgres(connectionString);
+const client = postgres(connectionString, {
+  onnotice: () => {}, // Suppress informational PostgreSQL NOTICE logs in console
+});
 export const db = drizzle(client, { schema });

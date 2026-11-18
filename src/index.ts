@@ -6,11 +6,16 @@ import studyPlansRoutes from './routes/studyPlans.js';
 import vocabRoutes from './routes/vocab.js';
 import practiceRoutes from './routes/practice.js';
 import paymentRoutes from './routes/payments.js';
+import adminRoutes from './routes/admin.js';
+import { ensureCouponsTable } from './db/initCoupons.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.set('trust proxy', 1);
+
+// Ensure database tables for coupons & payments are up to date
+ensureCouponsTable().catch((e) => console.warn('[Database] Coupons init warning:', e));
 
 // Strict Origin Whitelist: Only localhost, aurapre.netlify.app, auraprep.netlify.app, and auraprep.us.ci
 const isAllowedOrigin = (origin: string): boolean => {
@@ -91,6 +96,7 @@ app.use('/api/study-plans', studyPlansRoutes);
 app.use('/api/vocab', vocabRoutes);
 app.use('/api/practice', practiceRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/admin', adminRoutes);
 
 
 // Health check (supports both /health and /api/health for keep-alive services like UptimeRobot, Render, etc.)

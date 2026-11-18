@@ -422,6 +422,9 @@ export interface PaymentSlipDetails {
   paymentId: string;
   orderId?: string;
   amount: number;
+  originalAmount?: number;
+  discountAmount?: number;
+  couponCode?: string;
   planType: string;
   language?: string;
   paymentDate?: string;
@@ -438,6 +441,9 @@ export async function sendPaymentSlipEmail({
   paymentId,
   orderId,
   amount,
+  originalAmount,
+  discountAmount,
+  couponCode,
   planType,
   language,
   paymentDate,
@@ -540,8 +546,18 @@ export async function sendPaymentSlipEmail({
           <!-- Calculations -->
           <tr style="color:#64748b; font-size:12px;">
             <td colspan="2" align="right" style="padding:6px 12px 2px;">Subtotal:</td>
-            <td align="right" style="padding:6px 12px 2px; color:#0f172a;">₹${amount.toLocaleString('en-IN')}</td>
+            <td align="right" style="padding:6px 12px 2px; color:#0f172a;">₹${((originalAmount !== undefined ? originalAmount : amount)).toLocaleString('en-IN')}</td>
           </tr>
+          ${
+            couponCode && discountAmount && discountAmount > 0
+              ? `
+          <tr style="color:#059669; font-size:12px;">
+            <td colspan="2" align="right" style="padding:2px 12px;">Coupon Discount (${couponCode}):</td>
+            <td align="right" style="padding:2px 12px; color:#059669; font-weight:700;">-₹${discountAmount.toLocaleString('en-IN')}</td>
+          </tr>
+          `
+              : ''
+          }
           <tr style="color:#64748b; font-size:12px;">
             <td colspan="2" align="right" style="padding:2px 12px;">Taxes (Included):</td>
             <td align="right" style="padding:2px 12px; color:#059669;">₹0.00</td>

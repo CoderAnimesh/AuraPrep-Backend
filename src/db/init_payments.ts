@@ -8,7 +8,9 @@ if (!connectionString) {
   process.exit(1);
 }
 
-const sql = postgres(connectionString);
+const sql = postgres(connectionString, {
+  onnotice: () => {},
+});
 
 async function initPaymentsDb() {
   console.log('Initializing payments and subscription database schema...');
