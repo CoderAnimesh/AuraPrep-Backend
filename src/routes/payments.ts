@@ -26,9 +26,9 @@ const PRICING: Record<string, { amountInINR: number; amountInPaise: number; desc
     description: 'VocabHub Monthly Subscription Plan (₹499/month)',
   },
   vocab_yearly: {
-    amountInINR: 2944,
-    amountInPaise: 294400,
-    description: 'VocabHub Yearly Subscription Plan (₹2944/year)',
+    amountInINR: 2499,
+    amountInPaise: 249900,
+    description: 'VocabHub Yearly Subscription Plan (₹2499/year)',
   },
   practice_pass: {
     amountInINR: 1499,

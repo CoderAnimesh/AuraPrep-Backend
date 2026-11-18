@@ -263,13 +263,16 @@ router.post('/forgot-password', async (req, res) => {
       createdAt: new Date().toISOString(),
     });
 
-    // Build reset URL
-    const rawOrigin = req.headers.origin || process.env.FRONTEND_URL || 'https://auraprep.us.ci';
-    const frontendOrigin = (Array.isArray(rawOrigin) ? rawOrigin[0] : rawOrigin).replace(/\/$/, '');
-    const resetUrl = `${frontendOrigin}/reset-password?token=${token}&email=${encodeURIComponent(cleanEmail)}`;
+    // Build reset URL - always with auraprep.us.ci domain
+    const resetUrl = `https://auraprep.us.ci/reset-password?token=${token}&email=${encodeURIComponent(cleanEmail)}`;
 
     // Dispatch branded email via Unitpost
-    await sendPasswordResetEmail(cleanEmail, user.name, resetUrl);
+    try {
+      const mailRes = await sendPasswordResetEmail(cleanEmail, user.name, resetUrl);
+      console.log(`[Auth/ForgotPassword] Reset email dispatched to ${cleanEmail}:`, mailRes);
+    } catch (mailErr) {
+      console.error('[Auth/ForgotPassword] Email dispatch error:', mailErr);
+    }
 
     res.json({ message: `Password reset instructions have been sent to ${cleanEmail}.` });
   } catch (error) {
@@ -359,9 +362,9 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-// Website Visitor / Lead Kit Dispatch
+// Website Visitor / Lead Kit Dispatch (with Registration Check & Delayed Scheduling)
 router.post('/lead-kit', async (req, res) => {
-  const { email } = req.body;
+  const { email, delayMinutes } = req.body;
   if (!email || !email.includes('@')) {
     res.status(400).json({ message: 'Please provide a valid email address.' });
     return;
@@ -370,11 +373,49 @@ router.post('/lead-kit', async (req, res) => {
   const cleanEmail = email.trim().toLowerCase();
 
   try {
+    // 1. Check if user is already registered on AuraPrep
+    const existingUsers = await db.select().from(users).where(eq(users.email, cleanEmail));
+    if (existingUsers.length > 0) {
+      console.log(`[LeadKit] Email ${cleanEmail} is already a registered user. Skipping email.`);
+      res.json({
+        skipped: true,
+        message: 'Account already registered. No diagnostic lead email sent.',
+      });
+      return;
+    }
+
+    const delay = parseInt(delayMinutes || '0', 10);
+
+    if (delay > 0) {
+      console.log(`[LeadKit] Scheduling 330+ GRE Diagnostic Kit for unregistered visitor ${cleanEmail} in ${delay} minutes.`);
+      setTimeout(async () => {
+        try {
+          // Re-check in case user registered during the delay window
+          const recheck = await db.select().from(users).where(eq(users.email, cleanEmail));
+          if (recheck.length === 0) {
+            await sendLeadKitEmail(cleanEmail);
+            console.log(`[LeadKit] Delayed kit sent to unregistered visitor: ${cleanEmail}`);
+          } else {
+            console.log(`[LeadKit] User ${cleanEmail} registered during delay window. Cancelled dispatch.`);
+          }
+        } catch (delayedErr) {
+          console.error(`[LeadKit] Delayed email send error for ${cleanEmail}:`, delayedErr);
+        }
+      }, delay * 60 * 1000);
+
+      res.json({
+        scheduled: true,
+        message: `Diagnostic kit scheduled to be dispatched in ${delay} minutes if user remains unregistered.`,
+      });
+      return;
+    }
+
+    // Direct dispatch
     await sendLeadKitEmail(cleanEmail);
     res.json({ message: `330+ GRE Diagnostic Kit sent to ${cleanEmail}!` });
   } catch (error) {
     console.error('Lead kit error:', error);
-    res.status(500).json({ message: 'Failed to send kit. Please try again.' });
+    res.status(500).json({ message: 'Failed to process lead request. Please try again.' });
   }
 });
 

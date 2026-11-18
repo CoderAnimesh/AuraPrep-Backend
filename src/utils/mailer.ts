@@ -9,7 +9,7 @@ interface SendMailOptions {
 
 /**
  * Base Branded HTML Template Generator
- * Produces clean, cross-client responsive email HTML with AuraPrep luxury dark/emerald branding.
+ * Produces clean, cross-client responsive email HTML with AuraPrep clean light format.
  */
 export function generateEmailHtml({
   preheader,
@@ -35,7 +35,7 @@ export function generateEmailHtml({
         .split('')
         .map(
           (d) =>
-            `<span style="display:inline-block; width:38px; height:46px; line-height:46px; font-size:24px; font-weight:700; font-family:'Courier New', monospace; background:#18221c; color:#10b981; border:1px solid rgba(16,185,129,0.3); border-radius:8px; margin:0 4px; text-align:center;">${d}</span>`
+            `<span style="display:inline-block; width:36px; height:44px; line-height:44px; font-size:22px; font-weight:700; font-family:'Courier New', monospace; background:#ffffff; color:#0f172a; border:1.5px solid #cbd5e1; border-radius:8px; margin:0 3px; text-align:center;">${d}</span>`
         )
         .join('')
     : '';
@@ -47,50 +47,34 @@ export function generateEmailHtml({
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
-  <!--[if mso]>
-  <noscript>
-    <xml>
-      <o:OfficeDocumentSettings>
-        <o:PixelsPerInch>96</o:PixelsPerInch>
-      </o:OfficeDocumentSettings>
-    </xml>
-  </noscript>
-  <![endif]-->
 </head>
-<body style="margin:0; padding:0; background-color:#090d0b; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing:antialiased; color:#d1d5db;">
+<body style="margin:0; padding:0; background-color:#f8fafc; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing:antialiased; color:#334155;">
   ${preheader ? `<div style="display:none; max-height:0; overflow:hidden; mso-hide:all;">${preheader}</div>` : ''}
-  <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color:#090d0b; padding:30px 15px;">
+  <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color:#f8fafc; padding:36px 15px;">
     <tr>
       <td align="center">
         <!-- Main Card -->
-        <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="max-width:560px; background-color:#121a15; border:1px solid rgba(16,185,129,0.22); border-radius:20px; overflow:hidden; box-shadow:0 20px 45px rgba(0,0,0,0.5);">
-          <!-- Top Glow Accent Bar -->
-          <tr>
-            <td height="4" style="background:linear-gradient(90deg, #059669 0%, #10b981 50%, #34d399 100%);"></td>
-          </tr>
+        <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="max-width:540px; background-color:#ffffff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; box-shadow:0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);">
           
           <!-- Header Area -->
           <tr>
-            <td style="padding:32px 36px 20px; text-align:center;">
+            <td style="padding:32px 36px 16px;">
               <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
                 <tr>
-                  <td align="center">
-                    <div style="display:inline-flex; align-items:center; gap:8px; padding:6px 14px; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.25); border-radius:999px;">
-                      <span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:#10b981;"></span>
-                      <span style="font-size:12px; font-weight:600; color:#34d399; letter-spacing:0.04em; text-transform:uppercase;">
-                        ${badgeText || 'AuraPrep Security & Admissions'}
-                      </span>
+                  <td>
+                    <div style="font-size:22px; font-weight:800; color:#0f172a; letter-spacing:-0.03em;">
+                      AuraPrep<span style="color:#059669;">.</span>
                     </div>
                   </td>
                 </tr>
                 <tr>
-                  <td align="center" style="padding-top:18px;">
-                    <h1 style="margin:0; font-size:26px; font-weight:800; color:#f3f4f6; letter-spacing:-0.02em;">
+                  <td style="padding-top:18px;">
+                    <h1 style="margin:0; font-size:22px; font-weight:700; color:#0f172a; letter-spacing:-0.02em; line-height:1.3;">
                       ${title}
                     </h1>
                     ${
                       subtitle
-                        ? `<p style="margin:8px 0 0; font-size:14px; color:#9ca3af; line-height:1.5;">${subtitle}</p>`
+                        ? `<p style="margin:6px 0 0; font-size:14px; color:#64748b; line-height:1.5;">${subtitle}</p>`
                         : ''
                     }
                   </td>
@@ -101,8 +85,8 @@ export function generateEmailHtml({
 
           <!-- Content Body -->
           <tr>
-            <td style="padding:10px 36px 30px;">
-              <div style="font-size:15px; line-height:1.6; color:#e5e7eb;">
+            <td style="padding:6px 36px 28px;">
+              <div style="font-size:15px; line-height:1.6; color:#334155;">
                 ${mainContentHtml}
               </div>
 
@@ -110,34 +94,27 @@ export function generateEmailHtml({
               ${
                 codeBadge
                   ? `
-                <div style="margin:26px 0; padding:20px; background:#0b110e; border:1px dashed rgba(16,185,129,0.3); border-radius:14px; text-align:center;">
-                  <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#9ca3af; letter-spacing:0.08em; margin-bottom:12px;">Your One-Time 6-Digit Code</div>
+                <div style="margin:24px 0; padding:20px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; text-align:center;">
+                  <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748b; letter-spacing:0.06em; margin-bottom:12px;">Verification Code</div>
                   <div style="text-align:center;">
                     ${codeDigitsHtml}
                   </div>
-                  <div style="font-size:12px; color:#6b7280; margin-top:12px;">Valid for 15 minutes • Do not share with anyone</div>
+                  <div style="font-size:12px; color:#64748b; margin-top:12px;">Valid for 15 minutes • Do not share with anyone</div>
                 </div>
               `
                   : ''
               }
 
-              <!-- Action Button if present -->
+              <!-- Action Button (only button, no raw URL link text) -->
               ${
                 actionButton
                   ? `
-                <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="margin:28px 0 10px;">
+                <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="margin:26px 0 12px;">
                   <tr>
                     <td align="center">
-                      <a href="${actionButton.url}" target="_blank" style="display:inline-block; padding:14px 34px; background:linear-gradient(135deg, #059669 0%, #10b981 100%); color:#ffffff; text-decoration:none; font-size:15px; font-weight:700; border-radius:12px; box-shadow:0 8px 24px rgba(16,185,129,0.35); text-align:center;">
-                        ${actionButton.label} &rarr;
+                      <a href="${actionButton.url}" target="_blank" style="display:inline-block; padding:13px 34px; background-color:#059669; color:#ffffff; text-decoration:none; font-size:15px; font-weight:600; border-radius:8px; text-align:center;">
+                        ${actionButton.label}
                       </a>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td align="center" style="padding-top:12px;">
-                      <span style="font-size:11px; color:#6b7280; word-break:break-all;">
-                        Or copy link: <a href="${actionButton.url}" style="color:#10b981; text-decoration:underline;">${actionButton.url}</a>
-                      </span>
                     </td>
                   </tr>
                 </table>
@@ -145,13 +122,13 @@ export function generateEmailHtml({
                   : ''
               }
 
-              <!-- Security Notice -->
+              <!-- Professional, polite footnote if note present (no red alert box) -->
               ${
                 securityNote
                   ? `
-                <div style="margin-top:24px; padding:12px 16px; background:rgba(239,68,68,0.06); border-left:3px solid #ef4444; border-radius:6px; font-size:12px; color:#9ca3af; line-height:1.45;">
-                  <strong style="color:#f87171;">Security Advisory:</strong> ${securityNote}
-                </div>
+                <p style="margin:24px 0 0; font-size:13px; color:#64748b; line-height:1.5; border-top:1px solid #f1f5f9; padding-top:16px;">
+                  ${securityNote}
+                </p>
               `
                   : ''
               }
@@ -160,13 +137,12 @@ export function generateEmailHtml({
 
           <!-- Footer -->
           <tr>
-            <td style="padding:22px 36px 26px; background-color:#0d1410; border-top:1px solid rgba(255,255,255,0.06); text-align:center;">
-              <p style="margin:0 0 6px; font-size:12px; color:#9ca3af; font-weight:500;">
-                AuraPrep • Adaptive Learning & ETS Trap Deconstruction
+            <td style="padding:18px 36px 22px; background-color:#f8fafc; border-top:1px solid #e2e8f0; text-align:center;">
+              <p style="margin:0 0 4px; font-size:12px; color:#64748b; font-weight:500;">
+                AuraPrep • Adaptive GRE Learning Platform
               </p>
-              <p style="margin:0; font-size:11px; color:#6b7280; line-height:1.4;">
-                Crafted for ambitious GRE candidates worldwide.<br>
-                Educational Testing Service (ETS) and GRE are registered trademarks of their respective owners.
+              <p style="margin:0; font-size:11px; color:#94a3b8; line-height:1.4;">
+                Visit <a href="https://auraprep.us.ci" style="color:#059669; text-decoration:none;">auraprep.us.ci</a> • Empowering GRE candidates worldwide
               </p>
             </td>
           </tr>
@@ -187,12 +163,12 @@ export function generateEmailHtml({
  */
 export async function sendEmail({ to, subject, html, text }: SendMailOptions): Promise<{ success: boolean; id?: string; previewUrl?: string }> {
   const unitpostApiKey = process.env.UNITPOST_API_KEY;
-  const fromEmail = process.env.UNITPOST_FROM_EMAIL || process.env.SMTP_FROM || 'AuraPrep <noreply@auraprep.com>';
+  const fromEmail = process.env.UNITPOST_FROM_EMAIL || process.env.SMTP_FROM || 'AuraPrep <services@auraprep.us.ci>';
 
   // 1. Try Unitpost API first if key is present
   if (unitpostApiKey && unitpostApiKey.trim() !== '') {
     try {
-      console.log(`[Mailer/Unitpost] Sending email to: ${to} | Subject: "${subject}"`);
+      console.log(`[Mailer/Unitpost] Sending email to: ${to} | Subject: "${subject}" | From: ${fromEmail}`);
       const response = await fetch('https://www.unitpost.com/api/v1/email', {
         method: 'POST',
         headers: {
@@ -202,11 +178,12 @@ export async function sendEmail({ to, subject, html, text }: SendMailOptions): P
         },
         body: JSON.stringify({
           from: fromEmail,
-          to: [to],
+          to: typeof to === 'string' ? to : (Array.isArray(to) ? to[0] : String(to)),
           subject,
           html,
           text: text || subject,
         }),
+        signal: AbortSignal.timeout(8000),
       });
 
       if (response.ok) {
@@ -215,10 +192,10 @@ export async function sendEmail({ to, subject, html, text }: SendMailOptions): P
         return { success: true, id: data?.id || data?.data?.id };
       } else {
         const errText = await response.text();
-        console.warn(`[Mailer/Unitpost] Failed with status ${response.status}: ${errText}. Attempting fallback...`);
+        console.error(`[Mailer/Unitpost] Failed with status ${response.status}: ${errText}. Attempting fallback...`);
       }
     } catch (unitpostErr) {
-      console.warn('[Mailer/Unitpost] Network or API error:', unitpostErr);
+      console.error('[Mailer/Unitpost] Network or API error:', unitpostErr);
     }
   }
 
@@ -289,14 +266,13 @@ export async function sendOtpEmail(toEmail: string, otpCode: string, name?: stri
   const html = generateEmailHtml({
     preheader: `Your AuraPrep verification code is ${otpCode}.`,
     title: 'Verify Your Email Address',
-    subtitle: name ? `Welcome aboard, ${name}! Let's confirm your email.` : "Let's confirm your email address to get started.",
-    badgeText: 'Account Verification',
+    subtitle: name ? `Welcome, ${name}! Please confirm your email.` : "Please confirm your email address to continue.",
     mainContentHtml: `
-      <p>Thank you for choosing <strong>AuraPrep</strong> to power your GRE score breakthrough.</p>
-      <p>Please enter the 6-digit confirmation code below to verify your email and activate your account:</p>
+      <p>Thank you for signing up with <strong>AuraPrep</strong>.</p>
+      <p>Please enter the 6-digit verification code below to activate your account:</p>
     `,
     codeBadge: otpCode,
-    securityNote: 'This code expires in 15 minutes. Never share this code with anyone. AuraPrep staff will never ask for your verification code.',
+    securityNote: 'This verification code is valid for 15 minutes. Please do not share it with anyone.',
   });
 
   return sendEmail({
@@ -310,35 +286,34 @@ export async function sendOtpEmail(toEmail: string, otpCode: string, name?: stri
  * Send Account Created Welcome Email
  */
 export async function sendWelcomeEmail(toEmail: string, name: string, username: string) {
-  const loginUrl = (process.env.FRONTEND_URL || 'https://auraprep.us.ci').replace(/\/$/, '') + '/login';
+  const loginUrl = 'https://auraprep.us.ci/login';
 
   const html = generateEmailHtml({
     preheader: `Welcome to AuraPrep, ${name}! Your account credentials are ready.`,
     title: `Welcome to AuraPrep, ${name}!`,
-    subtitle: 'Your pathway to Quant 170 & Verbal 165+ starts today.',
-    badgeText: 'Account Created',
+    subtitle: 'Your pathway to 330+ GRE scores starts today.',
     mainContentHtml: `
-      <p>Congratulations! Your personal <strong>AuraPrep</strong> account has been successfully initialized.</p>
+      <p>Congratulations! Your personal <strong>AuraPrep</strong> account has been successfully created.</p>
       
-      <div style="background:#0b110e; border:1px solid rgba(16,185,129,0.2); border-radius:12px; padding:18px; margin:20px 0;">
-        <div style="font-size:13px; color:#9ca3af; margin-bottom:8px;"><strong>Account Details:</strong></div>
-        <div style="font-size:14px; color:#f3f4f6; margin-bottom:4px;">👤 <strong>Full Name:</strong> ${name}</div>
-        <div style="font-size:14px; color:#f3f4f6; margin-bottom:4px;">🆔 <strong>Username / Login:</strong> <code style="color:#34d399; font-weight:700;">${username}</code></div>
-        <div style="font-size:14px; color:#f3f4f6;">✉️ <strong>Registered Email:</strong> ${toEmail}</div>
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:18px; margin:20px 0;">
+        <div style="font-size:13px; font-weight:600; color:#0f172a; margin-bottom:8px;">Account Details:</div>
+        <div style="font-size:14px; color:#334155; margin-bottom:4px;">👤 <strong>Full Name:</strong> ${name}</div>
+        <div style="font-size:14px; color:#334155; margin-bottom:4px;">🆔 <strong>Username / Login:</strong> <code style="color:#059669; font-weight:700; background:#ecfdf5; padding:2px 6px; border-radius:4px;">${username}</code></div>
+        <div style="font-size:14px; color:#334155;">✉️ <strong>Registered Email:</strong> ${toEmail}</div>
       </div>
 
-      <p>Here is what you have unlocked:</p>
-      <ul style="padding-left:20px; margin:14px 0; color:#d1d5db; line-height:1.7;">
+      <p>Here is what is available on your dashboard:</p>
+      <ul style="padding-left:20px; margin:14px 0; color:#475569; line-height:1.7;">
         <li><strong>ETS Trap Deconstruction:</strong> Eliminate false-equivalence and extreme language traps.</li>
-        <li><strong>Vocabulary Hub:</strong> 1,200+ high-frequency GRE words with etymological signposts in 6 global languages.</li>
-        <li><strong>Cognitive Error Telemetry:</strong> Track your weaknesses and adaptive section pacing in real time.</li>
+        <li><strong>Vocabulary Hub:</strong> 1,200+ high-frequency GRE words with etymology across 6 languages.</li>
+        <li><strong>Adaptive Practice Area:</strong> Section-level pacing and cognitive error telemetry.</li>
       </ul>
     `,
     actionButton: {
       label: 'Access Your Dashboard',
       url: loginUrl,
     },
-    securityNote: 'Keep your login credentials secure. Remember to keep Two-Factor Authentication enabled for maximum account protection.',
+    securityNote: 'For account security, we recommend enabling Two-Factor Authentication from your Settings.',
   });
 
   return sendEmail({
@@ -353,19 +328,18 @@ export async function sendWelcomeEmail(toEmail: string, name: string, username: 
  */
 export async function sendPasswordResetEmail(toEmail: string, name: string, resetUrl: string) {
   const html = generateEmailHtml({
-    preheader: 'Use this secure link to reset your AuraPrep password.',
+    preheader: 'Use this secure button to reset your AuraPrep password.',
     title: 'Reset Your Password',
-    subtitle: `Hello ${name || 'there'}, we received a request to reset your account password.`,
-    badgeText: 'Security Notice',
+    subtitle: `Hello ${name || 'there'}, we received a request to reset your password.`,
     mainContentHtml: `
-      <p>We received a request to change the password associated with your AuraPrep account (<strong>${toEmail}</strong>).</p>
-      <p>Click the secure button below to set a new password:</p>
+      <p>We received a request to reset the password for your account associated with <strong>${toEmail}</strong>.</p>
+      <p>Click the button below to choose your new password:</p>
     `,
     actionButton: {
-      label: 'Reset My Password',
+      label: 'Reset Password',
       url: resetUrl,
     },
-    securityNote: 'This reset link will expire in 1 hour. If you did not request a password reset, you can safely disregard this email—your existing password remains secure.',
+    securityNote: 'This link will expire in 1 hour. If you did not request a password reset, you can safely disregard this email.',
   });
 
   return sendEmail({
@@ -379,13 +353,12 @@ export async function sendPasswordResetEmail(toEmail: string, name: string, rese
  * Send Password Changed Confirmation
  */
 export async function sendPasswordChangedEmail(toEmail: string, name?: string) {
-  const loginUrl = (process.env.FRONTEND_URL || 'https://auraprep.us.ci').replace(/\/$/, '') + '/login';
+  const loginUrl = 'https://auraprep.us.ci/login';
 
   const html = generateEmailHtml({
     preheader: 'Your AuraPrep password has been updated.',
-    title: 'Password Changed Successfully',
-    subtitle: `Hello ${name || 'there'}, your account security credentials have been updated.`,
-    badgeText: 'Security Alert',
+    title: 'Password Updated',
+    subtitle: `Hello ${name || 'there'}, your account password was successfully updated.`,
     mainContentHtml: `
       <p>This email confirms that the password for your AuraPrep account (<strong>${toEmail}</strong>) was successfully changed.</p>
       <p>You can now log in using your new credentials.</p>
@@ -394,12 +367,12 @@ export async function sendPasswordChangedEmail(toEmail: string, name?: string) {
       label: 'Log In to AuraPrep',
       url: loginUrl,
     },
-    securityNote: 'If you did NOT make this change, please contact AuraPrep Support immediately to lock your account.',
+    securityNote: 'If you did not make this change, please contact us immediately at services@auraprep.us.ci.',
   });
 
   return sendEmail({
     to: toEmail,
-    subject: 'Security Alert: AuraPrep Password Changed',
+    subject: 'Your AuraPrep Password Has Been Changed',
     html,
   });
 }
@@ -408,27 +381,26 @@ export async function sendPasswordChangedEmail(toEmail: string, name?: string) {
  * Send Free 330+ GRE Diagnostic & Starter Kit (Landing Page Lead)
  */
 export async function sendLeadKitEmail(toEmail: string) {
-  const registerUrl = (process.env.FRONTEND_URL || 'https://auraprep.us.ci').replace(/\/$/, '') + '/login?signup=true';
+  const registerUrl = 'https://auraprep.us.ci/login?signup=true';
 
   const html = generateEmailHtml({
     preheader: 'Your Free 330+ GRE Diagnostic Kit & ETS Trap Blueprint has arrived.',
     title: 'Your 330+ GRE Diagnostic Kit is Here',
     subtitle: 'The cognitive breakdown of ETS quantitative & verbal traps.',
-    badgeText: 'Free Starter Kit',
     mainContentHtml: `
       <p>Welcome to <strong>AuraPrep</strong>!</p>
       <p>Here is your high-yield GRE preparation starter kit:</p>
       
-      <div style="background:#0b110e; border:1px solid rgba(16,185,129,0.25); border-radius:12px; padding:18px; margin:20px 0;">
-        <div style="font-size:14px; font-weight:700; color:#34d399; margin-bottom:8px;">📘 What is inside your Starter Kit:</div>
-        <div style="font-size:13px; color:#d1d5db; line-height:1.6;">
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:18px; margin:20px 0;">
+        <div style="font-size:14px; font-weight:700; color:#0f172a; margin-bottom:8px;">📘 What is inside your Starter Kit:</div>
+        <div style="font-size:13px; color:#475569; line-height:1.6;">
           1. <strong>The 7 Hardest ETS Quantitative Traps:</strong> Prime factorization shortcuts, hidden inequality signs, and geometric assumptions.<br><br>
           2. <strong>Text Completion & Sentence Equivalence Blueprint:</strong> Decoding double blanks using pivot punctuation and root valence.<br><br>
           3. <strong>Top 100 GRE Words with Multi-Language Etymology:</strong> Master words in English, Hindi, Spanish, French, German, or Japanese.
         </div>
       </div>
 
-      <p>To start your free adaptive practice sessions and track your predictive GRE score, activate your account below:</p>
+      <p>To start your adaptive practice sessions and track your predictive score, activate your account below:</p>
     `,
     actionButton: {
       label: 'Create Free Account & Start Practice',
@@ -471,7 +443,7 @@ export async function sendPaymentSlipEmail({
   paymentDate,
   expiryDate,
 }: PaymentSlipDetails) {
-  const frontendUrl = (process.env.FRONTEND_URL || 'https://auraprep.us.ci').replace(/\/$/, '');
+  const frontendUrl = 'https://auraprep.us.ci';
   const cleanName = name || 'Scholar';
   const rawLang = (language || 'english').toLowerCase();
   const langName = rawLang.charAt(0).toUpperCase() + rawLang.slice(1);
@@ -507,19 +479,19 @@ export async function sendPaymentSlipEmail({
 
   const mainContentHtml = `
     <p>Dear <strong>${cleanName}</strong>,</p>
-    <p>Thank you for your purchase with AuraPrep. Your payment has been confirmed and verified. Below is your official system-generated payment slip and tax invoice.</p>
+    <p>Thank you for choosing AuraPrep. Your payment has been confirmed. Below is your official tax invoice and payment slip:</p>
 
-    <!-- OFFICIAL PAYMENT SLIP CARD -->
-    <div style="background:#090f0c; border:1.5px solid #10b981; border-radius:16px; padding:24px 22px; margin:22px 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-shadow:0 12px 35px rgba(0,0,0,0.5);">
+    <!-- OFFICIAL PAYMENT SLIP CARD (LIGHT FORMAT) -->
+    <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:12px; padding:22px; margin:22px 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
       <!-- Slip Header -->
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:18px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:16px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px; border-bottom:1px solid #e2e8f0; padding-bottom:14px;">
         <tr>
           <td align="left" valign="top">
-            <div style="font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#10b981; font-weight:700;">Official Tax Invoice & Payment Slip</div>
-            <div style="font-size:18px; font-weight:800; color:#ffffff; margin-top:3px; letter-spacing:0.02em;">${invoiceNumber}</div>
+            <div style="font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:#64748b; font-weight:700;">Official Tax Invoice & Payment Slip</div>
+            <div style="font-size:17px; font-weight:700; color:#0f172a; margin-top:3px;">${invoiceNumber}</div>
           </td>
           <td align="right" valign="top">
-            <span style="display:inline-block; padding:5px 12px; background:rgba(16,185,129,0.15); border:1px solid #10b981; border-radius:999px; color:#34d399; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">
+            <span style="display:inline-block; padding:4px 10px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:6px; color:#059669; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">
               ✓ PAID
             </span>
           </td>
@@ -527,83 +499,82 @@ export async function sendPaymentSlipEmail({
       </table>
 
       <!-- Customer & Transaction Information -->
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px; font-size:13px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:18px; font-size:13px;">
         <tr>
           <td width="55%" align="left" valign="top" style="padding-right:12px;">
-            <div style="font-size:10px; text-transform:uppercase; color:#9ca3af; font-weight:700; letter-spacing:0.06em; margin-bottom:4px;">Billed To:</div>
-            <div style="color:#ffffff; font-weight:700; font-size:14px; margin-bottom:2px;">${cleanName}</div>
-            <div style="color:#9ca3af; font-size:12px;">${toEmail}</div>
+            <div style="font-size:10px; text-transform:uppercase; color:#64748b; font-weight:700; letter-spacing:0.06em; margin-bottom:3px;">Billed To:</div>
+            <div style="color:#0f172a; font-weight:600; font-size:13px;">${cleanName}</div>
+            <div style="color:#64748b; font-size:12px;">${toEmail}</div>
           </td>
           <td width="45%" align="right" valign="top" style="padding-left:12px;">
-            <div style="font-size:10px; text-transform:uppercase; color:#9ca3af; font-weight:700; letter-spacing:0.06em; margin-bottom:4px;">Transaction Record:</div>
-            <div style="color:#d1d5db; font-size:12px; margin-bottom:2px;"><strong style="color:#ffffff;">Ref ID:</strong> <code style="color:#34d399; font-weight:700; font-size:11px;">${paymentId}</code></div>
-            ${orderId ? `<div style="color:#9ca3af; font-size:11px; margin-bottom:2px;"><strong>Order ID:</strong> ${orderId}</div>` : ''}
-            <div style="color:#9ca3af; font-size:11px;"><strong>Date:</strong> ${nowStr}</div>
+            <div style="font-size:10px; text-transform:uppercase; color:#64748b; font-weight:700; letter-spacing:0.06em; margin-bottom:3px;">Transaction:</div>
+            <div style="color:#334155; font-size:12px;"><strong style="color:#0f172a;">Ref ID:</strong> <code style="color:#059669; font-weight:600; font-size:11px;">${paymentId}</code></div>
+            ${orderId ? `<div style="color:#64748b; font-size:11px;"><strong>Order ID:</strong> ${orderId}</div>` : ''}
+            <div style="color:#64748b; font-size:11px;"><strong>Date:</strong> ${nowStr}</div>
           </td>
         </tr>
       </table>
 
       <!-- Itemized Table -->
-      <table width="100%" cellpadding="10" cellspacing="0" border="0" style="background:#040705; border:1px solid rgba(255,255,255,0.06); border-radius:10px; margin-bottom:18px;">
+      <table width="100%" cellpadding="10" cellspacing="0" border="0" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:16px;">
         <thead>
-          <tr style="border-bottom:1px solid rgba(255,255,255,0.08); color:#9ca3af; font-size:10px; text-transform:uppercase; letter-spacing:0.08em;">
+          <tr style="border-bottom:1px solid #e2e8f0; color:#64748b; font-size:10px; text-transform:uppercase; letter-spacing:0.06em;">
             <th align="left" style="padding:10px 12px;">Item Description</th>
             <th align="center" style="padding:10px 8px;">Validity</th>
             <th align="right" style="padding:10px 12px;">Amount</th>
           </tr>
         </thead>
         <tbody>
-          <tr style="color:#ffffff; font-size:13px; border-bottom:1px solid rgba(255,255,255,0.05);">
+          <tr style="color:#334155; font-size:13px; border-bottom:1px solid #f1f5f9;">
             <td style="padding:12px;">
-              <div style="font-weight:700; color:#ffffff; font-size:14px;">${itemTitle}</div>
-              <div style="font-size:11px; color:#9ca3af; margin-top:4px; line-height:1.4;">${itemSubtitle}</div>
+              <div style="font-weight:600; color:#0f172a; font-size:13px;">${itemTitle}</div>
+              <div style="font-size:11px; color:#64748b; margin-top:2px;">${itemSubtitle}</div>
             </td>
-            <td align="center" style="padding:12px 8px; color:#34d399; font-weight:600; font-size:11px; white-space:nowrap;">
+            <td align="center" style="padding:12px 8px; color:#059669; font-weight:600; font-size:11px; white-space:nowrap;">
               ${validUntilStr}
             </td>
-            <td align="right" style="padding:12px; font-weight:700; font-size:15px; color:#ffffff; white-space:nowrap;">
+            <td align="right" style="padding:12px; font-weight:700; font-size:14px; color:#0f172a; white-space:nowrap;">
               ₹${amount.toLocaleString('en-IN')}
             </td>
           </tr>
           <!-- Calculations -->
-          <tr style="color:#9ca3af; font-size:12px;">
-            <td colspan="2" align="right" style="padding:8px 12px 4px;">Subtotal:</td>
-            <td align="right" style="padding:8px 12px 4px; color:#ffffff;">₹${amount.toLocaleString('en-IN')}</td>
+          <tr style="color:#64748b; font-size:12px;">
+            <td colspan="2" align="right" style="padding:6px 12px 2px;">Subtotal:</td>
+            <td align="right" style="padding:6px 12px 2px; color:#0f172a;">₹${amount.toLocaleString('en-IN')}</td>
           </tr>
-          <tr style="color:#9ca3af; font-size:12px;">
-            <td colspan="2" align="right" style="padding:4px 12px;">GST / Taxes (18% inclusive):</td>
-            <td align="right" style="padding:4px 12px; color:#34d399;">₹0.00 (Included)</td>
+          <tr style="color:#64748b; font-size:12px;">
+            <td colspan="2" align="right" style="padding:2px 12px;">Taxes (Included):</td>
+            <td align="right" style="padding:2px 12px; color:#059669;">₹0.00</td>
           </tr>
-          <tr style="color:#ffffff; font-size:15px; font-weight:800; border-top:1px solid rgba(255,255,255,0.1);">
-            <td colspan="2" align="right" style="padding:12px 12px; color:#f3f4f6;">Total Paid:</td>
-            <td align="right" style="padding:12px 12px; color:#10b981; font-size:16px;">₹${amount.toLocaleString('en-IN')}</td>
+          <tr style="color:#0f172a; font-size:14px; font-weight:700; border-top:1px solid #e2e8f0;">
+            <td colspan="2" align="right" style="padding:10px 12px;">Total Paid:</td>
+            <td align="right" style="padding:10px 12px; color:#059669; font-size:15px;">₹${amount.toLocaleString('en-IN')}</td>
           </tr>
         </tbody>
       </table>
 
       <!-- Access Status Banner -->
-      <div style="background:rgba(16,185,129,0.08); border-left:3px solid #10b981; padding:12px 16px; border-radius:6px; font-size:12px; color:#d1d5db; line-height:1.5;">
-        ⚡ <strong>Immediate Activation:</strong> Your ${langName} vocabulary modules and interactive tools are unlocked and ready on your account. You can begin practicing immediately.
+      <div style="background:#ecfdf5; border:1px solid #a7f3d0; padding:10px 14px; border-radius:6px; font-size:12px; color:#065f46; line-height:1.5;">
+        ⚡ <strong>Immediate Activation:</strong> Your access is unlocked on your account. You can begin practicing immediately.
       </div>
     </div>
   `;
 
   const html = generateEmailHtml({
     preheader: `Payment Receipt: ${itemTitle} (Slip #${invoiceNumber})`,
-    title: 'Payment Confirmed & Verified',
+    title: 'Payment Confirmed',
     subtitle: `Thank you for your order, ${cleanName}! Here is your official payment slip.`,
-    badgeText: 'Payment Slip',
     mainContentHtml,
     actionButton: {
       label: ctaLabel,
       url: ctaUrl,
     },
-    securityNote: 'Please keep this payment slip for your personal tax and accounting records. Billed by AuraPrep Learning Systems Inc.',
+    securityNote: 'Please keep this payment slip for your records. Billed by AuraPrep Learning Systems Inc.',
   });
 
   return sendEmail({
     to: toEmail,
-    subject: `💳 Payment Receipt & Tax Invoice - ${itemTitle} (${invoiceNumber})`,
+    subject: `💳 Payment Receipt - ${itemTitle} (${invoiceNumber})`,
     html,
   });
 }

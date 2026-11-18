@@ -64,8 +64,8 @@ router.get('/groups/:groupNumber/words', async (req: AuthRequest, res) => {
     if (!isLangActive && !isEnglishLegacyActive) {
       res.status(403).json({
         message: !isEnglish
-          ? `Access locked. ${targetLanguage} is currently locked on your account. Unlock ${targetLanguage} with a plan (₹499/mo or ₹2944/yr).`
-          : 'Access locked. English Module 2+ requires an active VocabHub plan (₹499/mo or ₹2944/yr).',
+          ? `Access locked. ${targetLanguage} is currently locked on your account. Unlock ${targetLanguage} with a plan (₹499/mo or ₹2499/yr).`
+          : 'Access locked. English Module 2+ requires an active VocabHub plan (₹499/mo or ₹2499/yr).',
       });
       return;
     }
