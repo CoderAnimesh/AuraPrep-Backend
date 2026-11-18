@@ -105,3 +105,21 @@ export const quizAttempts = pgTable('quiz_attempts', {
   attemptedAt: text('attempted_at').notNull(),
 });
 
+export const emailVerifications = pgTable('email_verifications', {
+  id: varchar('id', { length: 256 }).primaryKey(),
+  email: varchar('email', { length: 256 }).notNull(),
+  otp: varchar('otp', { length: 10 }).notNull(),
+  expiresAt: text('expires_at').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
+export const passwordResets = pgTable('password_resets', {
+  id: varchar('id', { length: 256 }).primaryKey(),
+  userId: varchar('user_id', { length: 256 }).references(() => users.id).notNull(),
+  email: varchar('email', { length: 256 }).notNull(),
+  token: varchar('token', { length: 256 }).notNull(),
+  expiresAt: text('expires_at').notNull(),
+  used: integer('used').default(0).notNull(),
+  createdAt: text('created_at').notNull(),
+});
+

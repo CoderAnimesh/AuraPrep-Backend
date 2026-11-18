@@ -1,12 +1,19 @@
 import { Router } from 'express';
 import { db } from '../db/client.js';
-import { users, userVocabProgress, quizAttempts } from '../db/schema.js';
+import { users, userVocabProgress, quizAttempts, emailVerifications, passwordResets } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { authenticateToken, AuthRequest, getJwtSecret } from '../middleware/auth.js';
 import crypto from 'crypto';
 import { generateTOTPSecret, verifyTOTP, getOtpAuthUrl } from '../utils/totp.js';
+import {
+  sendOtpEmail,
+  sendWelcomeEmail,
+  sendPasswordResetEmail,
+  sendPasswordChangedEmail,
+  sendLeadKitEmail,
+} from '../utils/mailer.js';
 
 const router = Router();
 
@@ -102,9 +109,52 @@ async function checkAndUpdateStreak(user: any) {
   }
 }
 
+// Send Sign-Up Email OTP via Unitpost
+router.post('/send-signup-otp', async (req, res) => {
+  const { email, name } = req.body;
+  if (!email || !email.includes('@')) {
+    res.status(400).json({ message: 'A valid email address is required.' });
+    return;
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    const existingList = await db.select().from(users).where(eq(users.email, cleanEmail));
+    if (existingList.length > 0) {
+      res.status(400).json({ message: 'An account is already registered with this email address. Please log in or use Forgot Password.' });
+      return;
+    }
+
+    // Generate 6-digit numeric OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 mins
+
+    // Clear previous pending OTP for this email
+    await db.delete(emailVerifications).where(eq(emailVerifications.email, cleanEmail));
+
+    // Save new OTP
+    await db.insert(emailVerifications).values({
+      id: crypto.randomUUID(),
+      email: cleanEmail,
+      otp,
+      expiresAt,
+      createdAt: new Date().toISOString(),
+    });
+
+    // Send styled branded email via Unitpost
+    await sendOtpEmail(cleanEmail, otp, name);
+
+    res.json({ message: `A 6-digit verification code has been sent to ${cleanEmail}.` });
+  } catch (error) {
+    console.error('Send signup OTP error:', error);
+    res.status(500).json({ message: 'Failed to send verification email. Please try again.' });
+  }
+});
+
 // Register
 router.post('/register', async (req, res) => {
-  const { email, name, password } = req.body;
+  const { email, name, password, otp } = req.body;
   if (!email || !name || !password) {
     res.status(400).json({ message: 'Email, name, and password are required.' });
     return;
@@ -114,21 +164,44 @@ router.post('/register', async (req, res) => {
     return;
   }
 
+  const cleanEmail = email.trim().toLowerCase();
+
   try {
-    const usersList = await db.select().from(users).where(eq(users.email, email));
-    const existing = usersList[0];
-    if (existing) {
+    const usersList = await db.select().from(users).where(eq(users.email, cleanEmail));
+    if (usersList.length > 0) {
       res.status(400).json({ message: 'Email is already registered.' });
       return;
     }
 
+    // Verify Email OTP
+    if (otp) {
+      const records = await db
+        .select()
+        .from(emailVerifications)
+        .where(eq(emailVerifications.email, cleanEmail));
+
+      const validRecord = records.find(
+        (r) => r.otp === otp.trim() && new Date(r.expiresAt).getTime() > Date.now()
+      );
+
+      if (!validRecord) {
+        res.status(400).json({ message: 'Invalid or expired email verification code. Please request a new code.' });
+        return;
+      }
+
+      // Cleanup verification record
+      await db.delete(emailVerifications).where(eq(emailVerifications.email, cleanEmail));
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
     const userId = crypto.randomUUID();
+    const cleanUsername = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') || `user_${userId.slice(0, 6)}`;
 
     await db.insert(users).values({
       id: userId,
-      email,
+      email: cleanEmail,
       name,
+      username: cleanUsername,
       password: passwordHash,
       themePreference: 'dark',
       createdAt: new Date().toISOString(),
@@ -140,6 +213,11 @@ router.post('/register', async (req, res) => {
     const newUserList = await db.select().from(users).where(eq(users.id, userId));
     const newUser = newUserList[0];
 
+    // Send Welcome Email with user name & username via Unitpost
+    sendWelcomeEmail(cleanEmail, name, cleanUsername).catch((e) =>
+      console.warn('Welcome email dispatch warning:', e)
+    );
+
     const token = jwt.sign({ userId }, getJwtSecret(), { expiresIn: '7d' });
     res.status(201).json({
       token,
@@ -148,6 +226,155 @@ router.post('/register', async (req, res) => {
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ message: 'Internal server error.' });
+  }
+});
+
+// Request Password Reset Link via Unitpost
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email || !email.includes('@')) {
+    res.status(400).json({ message: 'Please enter a valid email address.' });
+    return;
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    const usersList = await db.select().from(users).where(eq(users.email, cleanEmail));
+    const user = usersList[0];
+
+    if (!user) {
+      res.status(404).json({ message: 'No account registered with this email address. Please check your spelling or sign up.' });
+      return;
+    }
+
+    // Generate secure 64-char hex token
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+
+    // Save reset token in DB
+    await db.insert(passwordResets).values({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      email: cleanEmail,
+      token,
+      expiresAt,
+      used: 0,
+      createdAt: new Date().toISOString(),
+    });
+
+    // Build reset URL
+    const rawOrigin = req.headers.origin || process.env.FRONTEND_URL || 'https://auraprep.us.ci';
+    const frontendOrigin = (Array.isArray(rawOrigin) ? rawOrigin[0] : rawOrigin).replace(/\/$/, '');
+    const resetUrl = `${frontendOrigin}/reset-password?token=${token}&email=${encodeURIComponent(cleanEmail)}`;
+
+    // Dispatch branded email via Unitpost
+    await sendPasswordResetEmail(cleanEmail, user.name, resetUrl);
+
+    res.json({ message: `Password reset instructions have been sent to ${cleanEmail}.` });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ message: 'Unable to process password reset request. Please try again.' });
+  }
+});
+
+// Verify Reset Token
+router.post('/verify-reset-token', async (req, res) => {
+  const { email, token } = req.body;
+  if (!email || !token) {
+    res.status(400).json({ message: 'Email and token are required.' });
+    return;
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    const records = await db.select().from(passwordResets).where(eq(passwordResets.email, cleanEmail));
+    const valid = records.find(
+      (r) => r.token === token && r.used === 0 && new Date(r.expiresAt).getTime() > Date.now()
+    );
+
+    if (!valid) {
+      res.status(400).json({ message: 'Password reset link is invalid or has expired. Please request a new one.' });
+      return;
+    }
+
+    res.json({ valid: true });
+  } catch (error) {
+    console.error('Verify reset token error:', error);
+    res.status(500).json({ message: 'Failed to verify reset token.' });
+  }
+});
+
+// Submit New Password
+router.post('/reset-password', async (req, res) => {
+  const { email, token, newPassword } = req.body;
+  if (!email || !token || !newPassword) {
+    res.status(400).json({ message: 'Email, token, and new password are required.' });
+    return;
+  }
+
+  if (newPassword.length < 8) {
+    res.status(400).json({ message: 'Password must be at least 8 characters long.' });
+    return;
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    const records = await db.select().from(passwordResets).where(eq(passwordResets.email, cleanEmail));
+    const validRecord = records.find(
+      (r) => r.token === token && r.used === 0 && new Date(r.expiresAt).getTime() > Date.now()
+    );
+
+    if (!validRecord) {
+      res.status(400).json({ message: 'Password reset link is invalid or has expired. Please request a new link.' });
+      return;
+    }
+
+    const usersList = await db.select().from(users).where(eq(users.email, cleanEmail));
+    const user = usersList[0];
+    if (!user) {
+      res.status(404).json({ message: 'User account not found.' });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    // Update password
+    await db.update(users).set({ password: passwordHash }).where(eq(users.id, user.id));
+
+    // Mark token as used
+    await db.update(passwordResets).set({ used: 1 }).where(eq(passwordResets.id, validRecord.id));
+
+    // Send confirmation alert email via Unitpost
+    sendPasswordChangedEmail(cleanEmail, user.name).catch((e) =>
+      console.warn('Password changed email dispatch warning:', e)
+    );
+
+    res.json({ message: 'Password has been successfully updated. You may now log in.' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ message: 'Failed to reset password. Please try again.' });
+  }
+});
+
+// Website Visitor / Lead Kit Dispatch
+router.post('/lead-kit', async (req, res) => {
+  const { email } = req.body;
+  if (!email || !email.includes('@')) {
+    res.status(400).json({ message: 'Please provide a valid email address.' });
+    return;
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    await sendLeadKitEmail(cleanEmail);
+    res.json({ message: `330+ GRE Diagnostic Kit sent to ${cleanEmail}!` });
+  } catch (error) {
+    console.error('Lead kit error:', error);
+    res.status(500).json({ message: 'Failed to send kit. Please try again.' });
   }
 });
 

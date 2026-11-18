@@ -5,6 +5,7 @@ import { db } from '../db/client.js';
 import { users, payments } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { authenticateToken, AuthRequest } from '../middleware/auth.js';
+import { sendPaymentSlipEmail } from '../utils/mailer.js';
 
 const router = Router();
 
@@ -192,17 +193,53 @@ router.post('/verify', authenticateToken, async (req: AuthRequest, res) => {
 
     // Record Payment Transaction
     const paymentId = `pay_${crypto.randomUUID()}`;
+    const effectivePaymentId = razorpay_payment_id || `pay_sim_${Date.now()}`;
+    const invoiceNumber = `INV-AP-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+
     await db.insert(payments).values({
       id: paymentId,
       userId,
       razorpayOrderId: razorpay_order_id || 'test_order',
-      razorpayPaymentId: razorpay_payment_id || `pay_sim_${Date.now()}`,
+      razorpayPaymentId: effectivePaymentId,
       razorpaySignature: razorpay_signature || 'simulated_test_sig',
       planType,
       amount: plan.amountInINR,
       status: 'completed',
       createdAt: new Date().toISOString(),
     });
+
+    // Dispatch Official Payment Slip & Tax Invoice via Unitpost
+    try {
+      const recipientEmail = currentUser?.email;
+      if (recipientEmail) {
+        const recipientName = currentUser.name || (currentUser.username ? `@${currentUser.username}` : 'Scholar');
+        const calculatedExpiry = planType === 'vocab_monthly'
+          ? new Date(langBaseTime + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+          : planType === 'vocab_yearly'
+          ? new Date(langBaseTime + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+          : 'Lifetime Access';
+
+        await sendPaymentSlipEmail({
+          toEmail: recipientEmail,
+          name: recipientName,
+          invoiceNumber,
+          paymentId: effectivePaymentId,
+          orderId: razorpay_order_id,
+          amount: plan.amountInINR,
+          planType,
+          language: targetLanguage,
+          paymentDate: new Date().toLocaleString('en-US', {
+            timeZone: 'Asia/Kolkata',
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          }),
+          expiryDate: calculatedExpiry,
+        });
+        console.log(`[Payments] Payment slip ${invoiceNumber} dispatched to ${recipientEmail} for language: ${targetLanguage}`);
+      }
+    } catch (mailErr) {
+      console.error('[Payments] Failed to dispatch payment slip email:', mailErr);
+    }
 
     // Fetch updated user object
     const updatedUserList = await db.select().from(users).where(eq(users.id, userId));
@@ -212,7 +249,8 @@ router.post('/verify', authenticateToken, async (req: AuthRequest, res) => {
 
     res.json({
       success: true,
-      message: 'Payment verified successfully! Access granted.',
+      message: 'Payment verified successfully! Access granted and payment slip sent to your email.',
+      invoiceNumber,
       user: userWithoutPassword,
     });
   } catch (err: any) {
